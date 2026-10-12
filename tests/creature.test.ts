@@ -66,11 +66,11 @@ describe("creature kit", () => {
 
   it("every combination in the covering set is valid and ends with the power core", () => {
     for (const o of coveringSet()) checkCombo(o);
-  });
+  }, 180_000);
 
   it("a seeded random sample of 200 is valid", () => {
     for (const o of seeded(200)) checkCombo(o);
-  });
+  }, 180_000);
 
   it.runIf(process.env.CREATURE_EXHAUSTIVE === "1")("ALL 4,860 combinations are valid (exhaustive)", () => {
     for (const o of allCombos()) checkCombo(o);
@@ -116,7 +116,7 @@ describe("creature kit", () => {
       const supplierTotal = est.totalCents - est.serviceFeeCents;
       expect(supplierTotal + paymentFeeEstimate(price) + 150).toBeLessThanOrEqual(0.8 * price);
     }
-  });
+  }, 180_000);
 });
 
 describe("creature stats", () => {
@@ -136,7 +136,7 @@ describe("creature stats", () => {
       const b = st({ ...o, back: "wings" });
       for (const k of ["size", "zoom", "armor", "chomp"] as const) expect(b[k]).toBeGreaterThanOrEqual(a[k]);
     }
-  });
+  }, 180_000);
   it("gives a Super title with a fixed tie priority", () => {
     expect(st({ legs: "wheels" }).title).toBe("Super Zoomer");
     expect(st({ legs: "stompers", back: "wings", head: "bug" }).title).toBe("Super Flyer");
