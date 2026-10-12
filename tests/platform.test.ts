@@ -62,7 +62,7 @@ describe("platform", () => {
 
   it("accepts only real images within limits and keeps them private", async () => {
     const owner = crypto.randomUUID();
-    const designId = await createDesign(owner, "house");
+    const designId = await createDesign(owner, "cottage");
     expect(sniffImage(PNG)?.mime).toBe("image/png");
     await expect(saveUpload(owner, designId, "x.png", Buffer.from("<svg onload=alert(1)>"))).rejects.toThrow(/Only PNG/);
     await expect(saveUpload(owner, designId, "big.png", Buffer.concat([PNG, Buffer.alloc(6 * 1024 * 1024)]))).rejects.toThrow(/MB or smaller/);
@@ -75,7 +75,7 @@ describe("platform", () => {
   });
 
   it("generates instruction PDFs with a cover, parts list and one page per step", async () => {
-    const model = buildModel(defaultParams("house"));
+    const model = buildModel(defaultParams("cottage"));
     const pdf = await generateInstructionsPdf(model, { title: "Test House", modeLabel: "SIMULATION", validation: validateModel(model) });
     const { PDFDocument } = await import("pdf-lib");
     const doc = await PDFDocument.load(pdf);
@@ -103,7 +103,7 @@ describe("platform", () => {
   });
 
   it("reports environmental data honestly", () => {
-    const bom = computeBom(buildModel(defaultParams("creature")));
+    const bom = computeBom(buildModel(defaultParams("pup")));
     const env = environmentalReport(bom, "new");
     expect(env.reusedWeightGrams).toBe(0);
     expect(env.carbonComparison.enabled).toBe(false);

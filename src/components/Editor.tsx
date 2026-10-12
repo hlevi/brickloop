@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { COLORS } from "@/lib/catalog/colors";
 import { renderIso, toSvg } from "@/lib/instructions/iso";
-import { COLOR_OPTIONS } from "@/lib/edit/tools";
+import { getKit } from "@/lib/model/templates";
 import type { DesignView } from "@/lib/designs";
 import type { StepSummary } from "@/lib/instructions/steps";
 import { formatCents } from "@/lib/format";
@@ -105,34 +105,33 @@ export default function Editor({ designId }: { designId: string }) {
         <div className="stack area-b">
           <section className="panel">
             <h2>Customize</h2>
-            {p.template === "house" && (
-              <>
-                <Seg label="Width (studs)" options={[6, 8, 10]} value={p.width} onChange={(v) => edit([{ name: "set_house_width", input: { width: v } }])} disabled={busy} />
-                <Seg label="Roof" options={["gable", "flat"]} value={p.roofStyle} onChange={(v) => edit([{ name: "set_roof_style", input: { style: v } }])} disabled={busy} />
-              </>
-            )}
-            {p.template === "firetruck" && (
-              <Seg label="Ladder length (studs)" options={[6, 8, 10]} value={p.ladderLength} onChange={(v) => edit([{ name: "set_ladder_length", input: { length: v } }])} disabled={busy} />
-            )}
-            {p.template === "creature" && (
-              <Seg label="Body segments" options={[2, 3, 4, 5]} value={p.bodyLength} onChange={(v) => edit([{ name: "set_creature_length", input: { segments: v } }])} disabled={busy} />
-            )}
-            {Object.entries(COLOR_OPTIONS[p.template]).map(([comp, colors]) => (
-              <div className="field" key={comp}>
+            {getKit(p.template).options.map((o) => (
+              <Seg
+                key={o.id}
+                label={o.label}
+                options={o.values.map((v) => v.id)}
+                labels={Object.fromEntries(o.values.map((v) => [v.id, v.label]))}
+                value={p.options[o.id]}
+                onChange={(v) => edit([{ name: "set_option", input: { option: o.id, value: v } }])}
+                disabled={busy}
+              />
+            ))}
+            {getKit(p.template).components.map((comp) => (
+              <div className="field" key={comp.id}>
                 <span className="label">
-                  {comp[0].toUpperCase() + comp.slice(1)}: <span className="muted">{COLORS[(p.colors as Record<string, string>)[comp]]?.name}</span>
+                  {comp.label}: <span className="muted">{COLORS[p.colors[comp.id]]?.name}</span>
                 </span>
-                <div className="swatches" role="group" aria-label={`${comp} color`}>
-                  {colors.map((c) => (
+                <div className="swatches" role="group" aria-label={`${comp.label} color`}>
+                  {comp.allowed.map((c) => (
                     <button
                       key={c}
                       className="swatch"
                       title={COLORS[c].name}
                       aria-label={COLORS[c].name}
-                      aria-pressed={(p.colors as Record<string, string>)[comp] === c}
+                      aria-pressed={p.colors[comp.id] === c}
                       style={{ background: COLORS[c].hex, opacity: COLORS[c].transparent ? 0.7 : 1 }}
                       disabled={busy}
-                      onClick={() => edit([{ name: "set_color", input: { component: comp, color: c } }])}
+                      onClick={() => edit([{ name: "set_color", input: { component: comp.id, color: c } }])}
                     />
                   ))}
                 </div>
@@ -140,7 +139,7 @@ export default function Editor({ designId }: { designId: string }) {
             ))}
           </section>
 
-          <Chat designId={designId} onChanged={load} />
+          <Chat designId={designId} onChanged={load} hint={`Try: "${getKit(p.template).components[0].label.toLowerCase()} ${COLORS[getKit(p.template).components[0].allowed[1]].name.toLowerCase()}"${getKit(p.template).options[0] ? `, "${getKit(p.template).options[0].values[1].label.toLowerCase()}"` : ""}, or "undo".`} />
           <Validation view={view} />
           <Estimate view={view} designId={designId} onApply={edit} />
           <Uploads designId={designId} uploads={view.uploads} onChanged={load} />
@@ -150,14 +149,14 @@ export default function Editor({ designId }: { designId: string }) {
   );
 }
 
-function Seg<T extends string | number>({ label, options, value, onChange, disabled }: { label: string; options: T[]; value: T; onChange: (v: T) => void; disabled?: boolean }) {
+function Seg<T extends string | number>({ label, options, labels, value, onChange, disabled }: { label: string; options: T[]; labels?: Record<string, string>; value: T; onChange: (v: T) => void; disabled?: boolean }) {
   return (
     <div className="field">
       <span className="label">{label}</span>
       <div className="seg" role="group" aria-label={label}>
         {options.map((o) => (
           <button key={String(o)} aria-pressed={o === value} onClick={() => o !== value && onChange(o)} disabled={disabled}>
-            {String(o)}
+            {labels?.[String(o)] ?? String(o)}
           </button>
         ))}
       </div>
@@ -372,7 +371,7 @@ function Estimate({ view, designId, onApply }: { view: View; designId: string; o
   );
 }
 
-function Chat({ designId, onChanged }: { designId: string; onChanged: () => Promise<void> }) {
+function Chat({ designId, onChanged, hint }: { designId: string; onChanged: () => Promise<void>; hint: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -408,7 +407,7 @@ function Chat({ designId, onChanged }: { designId: string; onChanged: () => Prom
         {mode && <span className={`badge ${mode === "llm" ? "info" : "sim"}`}>{mode === "llm" ? "AI assistant" : "Offline assistant (no AI key)"}</span>}
       </div>
       <div className="chat-log" ref={logRef} aria-live="polite">
-        {messages.length === 0 && <p className="small muted">Try: &quot;make the roof blue and the walls yellow&quot;, &quot;wider&quot;, &quot;flat roof&quot;, or &quot;undo&quot;.</p>}
+        {messages.length === 0 && <p className="small muted">{hint}</p>}
         {messages.map((m, i) => (
           <div key={i} className={`msg ${m.role}`}>
             {m.content}

@@ -1,69 +1,72 @@
-import type { DesignModel, DesignParams, TemplateId } from "../types";
-import { buildHouse, HOUSE_DEFAULTS } from "./house";
-import { buildFiretruck, FIRETRUCK_DEFAULTS } from "./firetruck";
-import { buildCreature, CREATURE_DEFAULTS } from "./creature";
+import { compileBlueprint } from "../kit";
+import type { ComponentDef, DesignModel, DesignParams, TemplateId } from "../types";
+import type { KitDef } from "./types";
+import { PUP } from "./pup";
+import { RACER } from "./racer";
+import { DINO } from "./dino";
+import { COTTAGE } from "./cottage";
+import { ROCKET } from "./rocket";
+import { BONSAI } from "./bonsai";
+
+export type { KitDef, KitOption, KitComponent, AgeBand } from "./types";
+
+/** Original BrickLoop kits, ordered by age band. */
+export const KITS: KitDef[] = [PUP, RACER, DINO, COTTAGE, ROCKET, BONSAI];
 
 export interface TemplateInfo {
   id: TemplateId;
   name: string;
   description: string;
-  /** Pilot maturity: the house workflow is the first completed path. */
-  maturity: "primary" | "secondary";
+  ageBand: string;
+  category: string;
   adjustable: string[];
 }
 
-export const TEMPLATES: TemplateInfo[] = [
-  {
-    id: "house",
-    name: "Little House",
-    description: "A cottage with a door, windows and a gable or flat roof. An original BrickLoop design.",
-    maturity: "primary",
-    adjustable: ["Width: 6, 8 or 10 studs", "Roof: gable or flat", "Colors: base, walls, windows, roof"],
-  },
-  {
-    id: "firetruck",
-    name: "Fire Truck",
-    description: "A compact fire engine with an extending ladder. An original BrickLoop design.",
-    maturity: "secondary",
-    adjustable: ["Ladder length: 6, 8 or 10 studs", "Colors: body, chassis, ladder, windows"],
-  },
-  {
-    id: "creature",
-    name: "Caterpillar Creature",
-    description: "A friendly segmented creature on little legs. An original BrickLoop design.",
-    maturity: "secondary",
-    adjustable: ["Body length: 2 to 5 segments", "Colors: body, head, spine, legs"],
-  },
-];
+export const TEMPLATES: TemplateInfo[] = KITS.map((k) => ({
+  id: k.id,
+  name: k.name,
+  description: k.description,
+  ageBand: k.ageBand,
+  category: k.category,
+  adjustable: [
+    ...k.options.map((o) => `${o.label}: ${o.values.map((v) => v.label).join(" / ")}`),
+    `Colors: ${k.components.map((c) => c.label.toLowerCase()).join(", ")}`,
+  ],
+}));
 
-export function defaultParams(template: TemplateId): DesignParams {
-  switch (template) {
-    case "house":
-      return { template, ...structuredClone(HOUSE_DEFAULTS) };
-    case "firetruck":
-      return { template, ...structuredClone(FIRETRUCK_DEFAULTS) };
-    case "creature":
-      return { template, ...structuredClone(CREATURE_DEFAULTS) };
-  }
-}
-
-export function buildModel(params: DesignParams): DesignModel {
-  switch (params.template) {
-    case "house": {
-      const { template: _t, ...p } = params;
-      return buildHouse(p);
-    }
-    case "firetruck": {
-      const { template: _t, ...p } = params;
-      return buildFiretruck(p);
-    }
-    case "creature": {
-      const { template: _t, ...p } = params;
-      return buildCreature(p);
-    }
-  }
+export function getKit(id: string): KitDef {
+  const k = KITS.find((x) => x.id === id);
+  if (!k) throw new Error(`Unknown kit ${id}`);
+  return k;
 }
 
 export function isTemplateId(v: unknown): v is TemplateId {
-  return v === "house" || v === "firetruck" || v === "creature";
+  return typeof v === "string" && KITS.some((k) => k.id === v);
+}
+
+export function defaultParams(template: TemplateId): DesignParams {
+  const k = getKit(template);
+  return {
+    template,
+    colors: Object.fromEntries(k.components.map((c) => [c.id, c.default])),
+    options: Object.fromEntries(k.options.map((o) => [o.id, o.default])),
+  };
+}
+
+export function buildModel(params: DesignParams): DesignModel {
+  const k = getKit(params.template);
+  const options = { ...defaultParams(k.id).options, ...params.options };
+  const colors = { ...defaultParams(k.id).colors, ...params.colors };
+  const { parts, steps } = compileBlueprint(k.blueprint(options), colors);
+  const components: ComponentDef[] = k.components.map((c) => ({ id: c.id, label: c.label, colorId: colors[c.id], allowedColors: c.allowed }));
+  const optKey = k.options.map((o) => `${o.id}=${options[o.id]}`).join(",");
+  return {
+    template: k.id,
+    templateVersion: `${k.id}-${k.version}`,
+    params: { template: k.id, colors, options },
+    parts,
+    components,
+    steps,
+    structuralKey: `${k.id}-${k.version}:${optKey}`,
+  };
 }

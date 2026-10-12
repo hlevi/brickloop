@@ -1,7 +1,7 @@
 import type { ColorId } from "../catalog/colors";
 
 export type Rotation = 0 | 90 | 180 | 270;
-export type TemplateId = "house" | "firetruck" | "creature";
+export type TemplateId = string;
 
 /** One physical part placed in the model. Coordinates: x/z in studs, y in plates. */
 export interface PlacedPart {
@@ -31,24 +31,12 @@ export interface ComponentDef {
   allowedColors: ColorId[];
 }
 
-export interface HouseParams {
-  width: 6 | 8 | 10;
-  roofStyle: "gable" | "flat";
-  colors: { base: ColorId; walls: ColorId; windows: ColorId; roof: ColorId };
+/** Bounded customization: a color per component and a value per option. */
+export interface DesignParams {
+  template: TemplateId;
+  colors: Record<string, ColorId>;
+  options: Record<string, string>;
 }
-export interface FiretruckParams {
-  ladderLength: 6 | 8 | 10;
-  colors: { body: ColorId; chassis: ColorId; ladder: ColorId; windows: ColorId };
-}
-export interface CreatureParams {
-  bodyLength: 2 | 3 | 4 | 5;
-  colors: { body: ColorId; head: ColorId; spine: ColorId; legs: ColorId };
-}
-
-export type DesignParams =
-  | ({ template: "house" } & HouseParams)
-  | ({ template: "firetruck" } & FiretruckParams)
-  | ({ template: "creature" } & CreatureParams);
 
 /** The authoritative model. Preview, BOM and instructions all derive from this. */
 export interface DesignModel {

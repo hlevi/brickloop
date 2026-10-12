@@ -5,7 +5,7 @@ TypeScript · Next.js 16 (App Router) · React Three Fiber · PostgreSQL (or emb
 ```
 src/lib/
   catalog/        parts, palette, external id mappings (provisional until verified; DB overrides)
-  model/          authoritative model types + deterministic template generators (house, fire truck, creature)
+  model/          authoritative model types; kit.ts compiles layered voxel blueprints into parts; templates/ holds the six kits
   validation/     catalog, collision, stud connectivity, step order, warnings; physical-validation registry
   bom/            bill of materials (derived) + CSV and BrickLink wanted-list XML export
   instructions/   isometric renderer (SVG + PDF share it), step summaries, PDF generator
@@ -49,7 +49,7 @@ db/migrations/    SQL migrations
 - [x] Bounded LLM + visual customization (mock mode without credentials)
 - [x] Sandbox payments, procurement limits, exceptions
 - [ ] Connect a verified supplier and run controlled real orders: **blocked** (no verified supplier or agreement)
-- [x] Truck and creature (digitally validated)
+- [x] Six kits across age bands 4+ to 12+ (digitally validated; every option combination is tested)
 - [ ] Physical builds and deliveries before unattended operation: **requires physical work**
 
 ## Acceptance tests → test files

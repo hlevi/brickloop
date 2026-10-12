@@ -3,7 +3,7 @@ import { COLORS } from "../catalog/colors";
 import { env } from "../config";
 import type { DesignParams } from "../model/types";
 import type { ChatPlan } from "./mockChat";
-import { COLOR_OPTIONS, SUPPORTED_EDITS_TEXT, toolDefinitions } from "./tools";
+import { colorOptions, supportedEditsText, toolDefinitions } from "./tools";
 
 export interface ChatTurn {
   role: "user" | "assistant";
@@ -11,12 +11,12 @@ export interface ChatTurn {
 }
 
 function systemPrompt(params: DesignParams): string {
-  const opts = Object.entries(COLOR_OPTIONS[params.template])
+  const opts = Object.entries(colorOptions(params.template))
     .map(([comp, colors]) => `- ${comp}: ${colors.map((c) => `${c} (${COLORS[c].name})`).join(", ")}`)
     .join("\n");
   return [
     "You help a customer customize a brick model kit through a fixed set of edit tools.",
-    `Model: ${params.template}. Supported edits: ${SUPPORTED_EDITS_TEXT[params.template]}.`,
+    `Model: ${params.template}. Supported edits: ${supportedEditsText(params.template)}.`,
     `Current configuration (JSON): ${JSON.stringify(params)}`,
     `Allowed colors per component:\n${opts}`,
     "Rules:",

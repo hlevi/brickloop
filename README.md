@@ -1,6 +1,6 @@
 # BrickLoop
 
-Custom brick-kit pilot. Customers pick an original starter model (house, fire truck or creature), customize it with visual controls or chat, and see a live 3D preview, the exact parts list and step-by-step PDF instructions. Each order then goes through a complete supplier quote, customer acceptance and payment authorization, re-checked procurement, capture, tracking and delivery. Exceptions go to an owner dashboard.
+Custom brick-kit pilot. Customers pick an original kit for their builder's age (puppy 4+, race car 6+, dinosaur 7+, cottage 8+, rocket 9+, desk bonsai 12+), customize it with visual controls or chat, and see a live 3D preview, the exact parts list and step-by-step PDF instructions. Each order then goes through a complete supplier quote, customer acceptance and payment authorization, re-checked procurement, capture, tracking and delivery. Exceptions go to an owner dashboard.
 
 > **Simulation mode.** No supplier has been verified for automated purchasing (see [docs/SUPPLIER_CAPABILITIES.md](docs/SUPPLIER_CAPABILITIES.md)). Quotes, payments, purchases and shipments are produced by deterministic simulators, and are labeled as such in the UI, notifications, PDFs and database records (`mode = 'simulated'`). Live purchasing is disabled until every item in the admin "Live readiness" checklist is satisfied.
 
@@ -23,7 +23,7 @@ No database server, API keys or supplier credentials are needed. Data is stored 
 | `npm run worker` | Standalone worker (PostgreSQL deployments) |
 
 ## What works
-- **Models:** three original starter models built by deterministic generators, with bounded edits: colors per component, house width (6/8/10) and roof (gable/flat), ladder length (6/8/10), creature length (2-5 segments).
+- **Kits:** six original kits across age bands, modeled on popular kit categories (first-build animal, vehicle, brick-built animal, house, space, botanical display) without copying any specific set. Each is authored as a layered voxel blueprint (`src/lib/model/templates/`) and compiled by `src/lib/model/kit.ts` into real parts. The compiler bridges joints between layers, places supported parts first, repairs overhangs, and handles slopes, ridges, tiles, round parts and wheels. Bounded edits: colors per component plus per-kit options (size, chimney, stages, jaw, spines, blossoms, wing, and so on).
 - **Validation:** catalog and palette checks, voxel collision detection, stud connectivity to the ground (plus wheel-pin attachments), step-order feasibility, and warnings (single-stud holds, long overhangs, insert-from-below). Physical validation is a separate registry, and it is currently empty.
 - **One source of truth:** the 3D viewer, isometric step diagrams, PDF instructions (cover, parts page, one page per step with parts callouts and a FRONT cue), BOM, CSV and BrickLink wanted-list XML all derive from the same model.
 - **Editing:** visual controls, chat (LLM with structured tools when `ANTHROPIC_API_KEY` is set, a rule-based mock otherwise), deterministic validation of every tool call, clarifying questions, explanations for unsupported edits, undo/reset, versioned revisions, saved designs, budget suggestions.

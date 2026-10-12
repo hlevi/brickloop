@@ -6,7 +6,7 @@ import { env } from "./config";
 import { planWithLlm, type ChatTurn } from "./edit/llm";
 import { planFromMessage, type ChatPlan } from "./edit/mockChat";
 import { applyTool, type ToolCall } from "./edit/tools";
-import { buildModel, defaultParams, TEMPLATES } from "./model/templates";
+import { buildModel, defaultParams, getKit, TEMPLATES } from "./model/templates";
 import type { DesignModel, DesignParams, TemplateId } from "./model/types";
 import { estimatePrice, type PriceEstimate } from "./pricing/estimate";
 import { log } from "./redact";
@@ -245,18 +245,17 @@ export async function chatHistory(customerId: string, designId: string) {
 export async function budgetSuggestions(customerId: string, designId: string, budgetCents: number) {
   const view = await getDesignView(customerId, designId);
   const lookup = await loadMappingLookup();
-  const candidates: { label: string; calls: ToolCall[] }[] = [];
+  // Every combination of build options (colors don't change price meaningfully).
+  const kit = getKit(view.params.template);
+  let combos: Record<string, string>[] = [{}];
+  for (const o of kit.options) combos = combos.flatMap((c) => o.values.map((v) => ({ ...c, [o.id]: v.id })));
   const p = view.params;
-  if (p.template === "house") {
-    for (const w of [6, 8, 10] as const) for (const roof of ["gable", "flat"] as const) {
-      if (w === p.width && roof === p.roofStyle) continue;
-      candidates.push({ label: `${w}-stud house with ${roof} roof`, calls: [{ name: "set_house_width", input: { width: w } }, { name: "set_roof_style", input: { style: roof } }] });
-    }
-  } else if (p.template === "firetruck") {
-    for (const l of [6, 8, 10] as const) if (l !== p.ladderLength) candidates.push({ label: `${l}-stud ladder`, calls: [{ name: "set_ladder_length", input: { length: l } }] });
-  } else {
-    for (const s of [2, 3, 4, 5] as const) if (s !== p.bodyLength) candidates.push({ label: `${s} body segments`, calls: [{ name: "set_creature_length", input: { segments: s } }] });
-  }
+  const candidates: { label: string; calls: ToolCall[] }[] = combos
+    .filter((c) => kit.options.some((o) => c[o.id] !== p.options[o.id]))
+    .map((c) => ({
+      label: kit.options.map((o) => o.values.find((v) => v.id === c[o.id])!.label).join(", "),
+      calls: kit.options.filter((o) => c[o.id] !== p.options[o.id]).map((o) => ({ name: "set_option", input: { option: o.id, value: c[o.id] } })),
+    }));
   const out = candidates.map((c) => {
     let params = p;
     for (const call of c.calls) {

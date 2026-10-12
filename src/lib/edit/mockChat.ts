@@ -1,9 +1,7 @@
 import { COLORS, resolveColorName } from "../catalog/colors";
-import { CREATURE_LENGTHS } from "../model/templates/creature";
-import { LADDER_LENGTHS } from "../model/templates/firetruck";
-import { HOUSE_WIDTHS } from "../model/templates/house";
+import { getKit } from "../model/templates";
 import type { DesignParams } from "../model/types";
-import { COLOR_OPTIONS, SUPPORTED_EDITS_TEXT, type ToolCall } from "./tools";
+import { supportedEditsText, type ToolCall } from "./tools";
 
 export interface ChatPlan {
   calls: ToolCall[];
@@ -13,20 +11,7 @@ export interface ChatPlan {
   control?: "undo" | "reset";
 }
 
-const COMPONENT_SYNONYMS: Record<string, string[]> = {
-  base: ["base", "baseplate", "ground", "grass", "floor", "plate"],
-  walls: ["wall", "walls", "house body", "bricks"],
-  windows: ["window", "windows", "glass", "windshield"],
-  roof: ["roof", "rooftop", "tiles", "shingles"],
-  body: ["body", "truck", "cab", "segments", "segment"],
-  chassis: ["chassis", "frame", "underside", "bottom"],
-  ladder: ["ladder"],
-  head: ["head", "face"],
-  spine: ["spine", "back", "stripe"],
-  legs: ["legs", "leg", "feet", "foot"],
-};
-
-const UNSUPPORTED = /\b(garage|chimney|second (floor|story)|balcony|door colou?r|garden|fence|wings?|tail|siren|hose|wheels? colou?r|add|remove|bigger windows?|taller|height)\b/i;
+const UNSUPPORTED = /\b(add|remove|garage|second (floor|story)|balcony|wings?|bigger windows?|from (a|this) (photo|picture|image)|minifig|people|person)\b/i;
 
 /** Find palette colors mentioned in text, longest names first so "dark bluish gray" beats "gray". */
 function findColors(text: string): { color: string; index: number }[] {
@@ -35,7 +20,7 @@ function findColors(text: string): { color: string; index: number }[] {
     names.add(c.name.toLowerCase());
     names.add(c.id.replace(/-/g, " "));
   }
-  ["grey", "gray", "light gray", "light grey", "dark gray", "dark grey", "brown", "clear", "transparent", "light blue", "beige"].forEach((n) => names.add(n));
+  ["grey", "gray", "light gray", "light grey", "dark gray", "dark grey", "brown", "clear", "transparent", "light blue", "beige", "pink", "dark green"].forEach((n) => names.add(n));
   const sorted = [...names].sort((a, b) => b.length - a.length);
   const found: { color: string; index: number }[] = [];
   let t = text.toLowerCase();
@@ -51,28 +36,11 @@ function findColors(text: string): { color: string; index: number }[] {
   return found.sort((a, b) => a.index - b.index);
 }
 
-function findComponents(text: string, template: DesignParams["template"]): { component: string; index: number }[] {
-  const valid = Object.keys(COLOR_OPTIONS[template]);
-  const out: { component: string; index: number }[] = [];
-  for (const comp of valid) {
-    for (const syn of COMPONENT_SYNONYMS[comp] ?? [comp]) {
-      const m = new RegExp(`\\b${syn}\\b`, "i").exec(text);
-      if (m) {
-        out.push({ component: comp, index: m.index });
-        break;
-      }
-    }
-  }
-  return out.sort((a, b) => a.index - b.index);
-}
-
-function stepThrough<T extends number>(options: readonly T[], current: T, dir: 1 | -1): T | null {
-  const i = options.indexOf(current) + dir;
-  return i >= 0 && i < options.length ? options[i] : null;
-}
+const word = (w: string) => new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
 
 /** Credential-free conversational editing: a rule-based planner producing the same tool calls as the LLM path. */
 export function planFromMessage(message: string, params: DesignParams): ChatPlan {
+  const kit = getKit(params.template);
   const text = message.trim();
   const lower = text.toLowerCase();
   if (/^\s*undo\b/.test(lower)) return { calls: [], reply: null, control: "undo" };
@@ -80,70 +48,65 @@ export function planFromMessage(message: string, params: DesignParams): ChatPlan
 
   const calls: ToolCall[] = [];
   const notes: string[] = [];
-  const more = /\b(wider|bigger|longer|larger|extend|more)\b/.test(lower);
-  const less = /\b(narrower|smaller|shorter|less|fewer)\b/.test(lower);
-  const num = (() => {
-    const m = /\b(\d{1,2})\b/.exec(lower);
-    return m ? Number(m[1]) : null;
-  })();
+  const colors = findColors(text);
+  // Text with color words blanked out, so "orange" the color doesn't trigger option words.
+  let rest = lower;
+  for (const c of [...Object.values(COLORS).map((c) => c.name.toLowerCase())].sort((a, b) => b.length - a.length)) rest = rest.split(c).join(" ");
 
-  if (params.template === "house") {
-    if (/\bflat\b/.test(lower)) calls.push({ name: "set_roof_style", input: { style: "flat" } });
-    else if (/\b(gable|pointed|peaked|sloped|slanted|triangle)\b/.test(lower)) calls.push({ name: "set_roof_style", input: { style: "gable" } });
-    if (/\b(width|wide|wider|narrower|studs?)\b/.test(lower) || (/\b(bigger|smaller|larger)\b/.test(lower) && !/\b(window|door)/.test(lower))) {
-      if (num !== null) calls.push({ name: "set_house_width", input: { width: num } });
-      else if (more || less) {
-        const next = stepThrough(HOUSE_WIDTHS, params.width, more ? 1 : -1);
-        if (next) calls.push({ name: "set_house_width", input: { width: next } });
-        else notes.push(`The house is already at its ${more ? "widest" : "narrowest"} supported width (${params.width} studs).`);
+  // Options: explicit value synonyms first, then ordered "bigger/smaller" requests.
+  for (const opt of kit.options) {
+    let picked: string | null = null;
+    // Longest synonyms first so "no chimney" beats "chimney".
+    const cands = opt.values.flatMap((v) => [v.label.toLowerCase(), ...(v.synonyms ?? [])].map((s) => ({ v: v.id, s })));
+    cands.sort((a, b) => b.s.length - a.s.length);
+    for (const c of cands) {
+      if (word(c.s).test(rest)) {
+        picked = c.v;
+        break;
       }
     }
-  }
-  if (params.template === "firetruck" && /\bladder\b/.test(lower)) {
-    if (num !== null) calls.push({ name: "set_ladder_length", input: { length: num } });
-    else if (more || less) {
-      const next = stepThrough(LADDER_LENGTHS, params.ladderLength, more ? 1 : -1);
-      if (next) calls.push({ name: "set_ladder_length", input: { length: next } });
-      else notes.push(`The ladder is already at its ${more ? "longest" : "shortest"} supported length (${params.ladderLength} studs).`);
+    if (!picked && opt.ordered && (opt.synonyms ?? []).some((s) => word(s).test(rest))) {
+      const num = /\b(\d{1,2})\b/.exec(rest);
+      if (num && opt.values.some((v) => v.id === num[1])) picked = num[1];
+      else {
+        const more = /\b(bigger|larger|longer|taller|wider|more|extend)\b/.test(rest);
+        const less = /\b(smaller|shorter|narrower|less|fewer)\b/.test(rest);
+        if (more || less) {
+          const i = opt.values.findIndex((v) => v.id === params.options[opt.id]) + (more ? 1 : -1);
+          if (i >= 0 && i < opt.values.length) picked = opt.values[i].id;
+          else notes.push(`${opt.label} is already at its ${more ? "largest" : "smallest"} setting.`);
+        }
+      }
     }
-  }
-  if (params.template === "creature" && /\b(long|longer|shorter|segments?|length|body length)\b/.test(lower) && !findColors(lower).length) {
-    if (num !== null) calls.push({ name: "set_creature_length", input: { segments: num } });
-    else if (more || less) {
-      const next = stepThrough(CREATURE_LENGTHS, params.bodyLength, more ? 1 : -1);
-      if (next) calls.push({ name: "set_creature_length", input: { segments: next } });
-      else notes.push(`The creature is already at its ${more ? "longest" : "shortest"} supported length (${params.bodyLength} segments).`);
-    }
+    if (picked && picked !== params.options[opt.id]) calls.push({ name: "set_option", input: { option: opt.id, value: picked } });
   }
 
-  // Colors: pair each color with the nearest preceding/following component mention.
-  const colors = findColors(text);
-  const comps = findComponents(text, params.template);
+  // Colors: pair each color with the nearest component mention.
+  const comps = kit.components
+    .map((c) => {
+      for (const s of [c.label.toLowerCase(), c.id, ...(c.synonyms ?? [])]) {
+        const m = word(s).exec(lower);
+        if (m) return { component: c.id, index: m.index };
+      }
+      return null;
+    })
+    .filter((c): c is { component: string; index: number } => c !== null);
   if (colors.length) {
     if (comps.length === 0) {
-      const options = Object.keys(COLOR_OPTIONS[params.template]);
-      return {
-        calls,
-        reply: `Which part should be ${colors.map((c) => COLORS[c.color].name).join(" / ")}? You can choose: ${options.join(", ")}.`,
-      };
+      return { calls, reply: `Which part should be ${colors.map((c) => COLORS[c.color].name).join(" / ")}? You can choose: ${kit.components.map((c) => c.label.toLowerCase()).join(", ")}.` };
     }
-    if (colors.length === 1) {
-      for (const comp of comps) calls.push({ name: "set_color", input: { component: comp.component, color: colors[0].color } });
-    } else {
-      for (const comp of comps) {
-        const nearest = colors.reduce((best, c) => (Math.abs(c.index - comp.index) < Math.abs(best.index - comp.index) ? c : best));
-        calls.push({ name: "set_color", input: { component: comp.component, color: nearest.color } });
-      }
+    for (const comp of comps) {
+      const nearest = colors.reduce((best, c) => (Math.abs(c.index - comp.index) < Math.abs(best.index - comp.index) ? c : best));
+      calls.push({ name: "set_color", input: { component: comp.component, color: nearest.color } });
     }
-  } else if (/\b(colou?r|paint|make it)\b/.test(lower) && comps.length) {
+  } else if (/\b(colou?r|paint)\b/.test(lower) && comps.length) {
     return { calls, reply: `Which color would you like for the ${comps.map((c) => c.component).join(" and ")}?` };
   }
 
-  if (UNSUPPORTED.test(lower) && calls.length === 0) {
-    return { calls, reply: `That change isn't supported yet. For this model I can ${SUPPORTED_EDITS_TEXT[params.template]}.` };
-  }
   if (calls.length === 0) {
-    return { calls, reply: notes.length ? notes.join(" ") : `I didn't find a change I can make. For this model I can ${SUPPORTED_EDITS_TEXT[params.template]}.` };
+    if (notes.length) return { calls, reply: notes.join(" ") };
+    if (UNSUPPORTED.test(lower)) return { calls, reply: `That change isn't supported yet. For this model I can ${supportedEditsText(kit.id)}.` };
+    return { calls, reply: `I didn't find a change I can make. For this model I can ${supportedEditsText(kit.id)}.` };
   }
   return { calls, reply: notes.length ? notes.join(" ") : null };
 }

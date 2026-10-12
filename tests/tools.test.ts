@@ -4,61 +4,68 @@ import { planFromMessage } from "@/lib/edit/mockChat";
 import { defaultParams } from "@/lib/model/templates";
 
 describe("edit tools (deterministic validation)", () => {
-  const house = defaultParams("house");
+  const cottage = defaultParams("cottage");
   it.each([
-    [{ name: "set_color", input: { component: "chimney", color: "red" } }, /Unknown component/],
+    [{ name: "set_color", input: { component: "garage", color: "red" } }, /Unknown component/],
     [{ name: "set_color", input: { component: "roof", color: "purple" } }, /Unknown color/],
     [{ name: "set_color", input: { component: "windows", color: "red" } }, /not available/],
-    [{ name: "set_house_width", input: { width: 12 } }, /6, 8, 10/],
-    [{ name: "set_house_width", input: { width: "8" } }, /6, 8, 10/],
-    [{ name: "set_roof_style", input: { style: "dome" } }, /gable, flat/],
-    [{ name: "set_ladder_length", input: { length: 8 } }, /does not apply/],
+    [{ name: "set_option", input: { option: "size", value: "huge" } }, /must be one of/],
+    [{ name: "set_option", input: { option: "stages", value: "3" } }, /Unknown option/],
+    [{ name: "set_option", input: { option: "size" } }, /must be one of/],
     [{ name: "delete_everything", input: {} }, /Unknown edit/],
   ])("rejects %j", (call, msg) => {
-    const r = applyTool(house, call);
+    const r = applyTool(cottage, call);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(msg);
   });
 
   it("does not mutate the input params", () => {
-    const before = JSON.stringify(house);
-    applyTool(house, { name: "set_house_width", input: { width: 10 } });
-    expect(JSON.stringify(house)).toBe(before);
+    const before = JSON.stringify(cottage);
+    applyTool(cottage, { name: "set_option", input: { option: "size", value: "roomy" } });
+    expect(JSON.stringify(cottage)).toBe(before);
   });
 });
 
 describe("mock conversation planner", () => {
-  const house = defaultParams("house");
+  const cottage = defaultParams("cottage");
   it("maps clear requests to tool calls", () => {
-    const p = planFromMessage("Make the roof blue and the walls yellow, and make it wider", house);
+    const p = planFromMessage("Make the roof blue and the walls yellow, and make it bigger", cottage);
     expect(p.calls).toEqual(
       expect.arrayContaining([
         { name: "set_color", input: { component: "roof", color: "blue" } },
         { name: "set_color", input: { component: "walls", color: "yellow" } },
-        { name: "set_house_width", input: { width: 10 } },
+        { name: "set_option", input: { option: "size", value: "roomy" } },
       ]),
     );
   });
   it("asks for clarification when the component is missing", () => {
-    const p = planFromMessage("make it blue", house);
+    const p = planFromMessage("make it blue", cottage);
     expect(p.calls).toEqual([]);
     expect(p.reply).toMatch(/Which part/);
   });
   it("explains unsupported edits", () => {
-    const p = planFromMessage("add a garage", house);
+    const p = planFromMessage("add a garage", cottage);
     expect(p.calls).toEqual([]);
     expect(p.reply).toMatch(/isn't supported/);
   });
-  it("handles flat roof, dark gray and limits", () => {
-    expect(planFromMessage("flat roof please", house).calls).toEqual([{ name: "set_roof_style", input: { style: "flat" } }]);
-    expect(planFromMessage("dark gray roof", house).calls).toEqual([{ name: "set_color", input: { component: "roof", color: "dark-bluish-gray" } }]);
-    const narrow = planFromMessage("narrower", { ...house, width: 6 } as typeof house);
-    expect(narrow.calls).toEqual([]);
-    expect(narrow.reply).toMatch(/narrowest/);
+  it("handles option synonyms, multi-word colors and limits", () => {
+    expect(planFromMessage("no chimney please", cottage).calls).toEqual([{ name: "set_option", input: { option: "chimney", value: "no" } }]);
+    expect(planFromMessage("dark gray roof", cottage).calls).toEqual([{ name: "set_color", input: { component: "roof", color: "dark-bluish-gray" } }]);
+    const smaller = planFromMessage("make it smaller", cottage);
+    expect(smaller.calls).toEqual([]);
+    expect(smaller.reply).toMatch(/smallest/);
   });
-  it("supports undo/reset and template-specific edits", () => {
-    expect(planFromMessage("undo", house).control).toBe("undo");
-    expect(planFromMessage("longer ladder", defaultParams("firetruck")).calls).toEqual([{ name: "set_ladder_length", input: { length: 10 } }]);
-    expect(planFromMessage("make it 5 segments long", defaultParams("creature")).calls).toEqual([{ name: "set_creature_length", input: { segments: 5 } }]);
+  it("works across kits", () => {
+    expect(planFromMessage("undo", cottage).control).toBe("undo");
+    expect(planFromMessage("make the rocket taller", defaultParams("rocket")).calls).toEqual([{ name: "set_option", input: { option: "stages", value: "3" } }]);
+    expect(planFromMessage("close the mouth and make the skin orange", defaultParams("dino")).calls).toEqual(
+      expect.arrayContaining([
+        { name: "set_option", input: { option: "jaw", value: "closed" } },
+        { name: "set_color", input: { component: "skin", color: "orange" } },
+      ]),
+    );
+    expect(planFromMessage("pink blossoms in bloom", defaultParams("bonsai")).calls).toEqual(
+      expect.arrayContaining([{ name: "set_option", input: { option: "blossoms", value: "yes" } }]),
+    );
   });
 });

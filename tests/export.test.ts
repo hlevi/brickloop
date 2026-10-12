@@ -4,7 +4,7 @@ import { bomToBrickLinkXml, bomToCsv, ExportBlockedError } from "@/lib/bom/expor
 import { defaultMapping, type MappingLookup } from "@/lib/catalog/mappings";
 import { buildModel, defaultParams } from "@/lib/model/templates";
 
-const model = buildModel(defaultParams("firetruck"));
+const model = buildModel(defaultParams("racer"));
 
 describe("exports", () => {
   it("CSV quantities match the BOM, including accessories", () => {
@@ -25,7 +25,7 @@ describe("exports", () => {
   it("produces wanted-list XML with a warning when provisional ids are explicitly allowed", () => {
     const xml = bomToBrickLinkXml(computeBom(model), { allowProvisional: true, condition: "U" });
     expect(xml).toMatch(/WARNING: \d+ line\(s\) use PROVISIONAL/);
-    expect(xml).toContain("<ITEMID>3030</ITEMID>");
+    expect(xml).toContain("<ITEMID>4600</ITEMID>");
     expect((xml.match(/<ITEM>/g) ?? []).length).toBe(computeBom(model).lines.length);
     expect(xml).toMatch(/<CONDITION>U<\/CONDITION>/);
   });

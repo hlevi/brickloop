@@ -11,7 +11,7 @@ import { CONTACT, freshDb, openExceptions, orderStatus, runAll } from "./helpers
 const cust = () => crypto.randomUUID();
 
 async function orderAwaitingAcceptance(customer = cust()) {
-  const designId = await createDesign(customer, "house");
+  const designId = await createDesign(customer, "cottage");
   const orderId = await createOrder(customer, { designId, contact: CONTACT, adultConfirmed: true });
   await runAll();
   expect(await orderStatus(orderId)).toBe("awaiting_acceptance");
@@ -63,7 +63,7 @@ describe("order workflow (simulation)", () => {
 
   it("requires adult confirmation and valid contact details", async () => {
     const c = cust();
-    const designId = await createDesign(c, "house");
+    const designId = await createDesign(c, "cottage");
     await expect(createOrder(c, { designId, contact: CONTACT, adultConfirmed: false })).rejects.toThrow(/18/);
     await expect(createOrder(c, { designId, contact: { ...CONTACT, email: "nope" }, adultConfirmed: true })).rejects.toThrow(/Email/);
   });
@@ -71,9 +71,9 @@ describe("order workflow (simulation)", () => {
   it("freezes the design revision at checkout", async () => {
     const { customer, designId, orderId } = await orderAwaitingAcceptance();
     const { applyEdits } = await import("@/lib/designs");
-    await applyEdits(customer, designId, [{ name: "set_house_width", input: { width: 10 } }], "visual");
+    await applyEdits(customer, designId, [{ name: "set_option", input: { option: "size", value: "roomy" } }], "visual");
     const view = await getCustomerOrder(customer, orderId);
-    expect(view.model.params.template === "house" && view.model.params.width).toBe(8);
+    expect(view.model.params.options.size).toBe("cozy");
   });
 
   it("refuses expired quotes and re-quotes", async () => {
@@ -126,7 +126,7 @@ describe("order workflow (simulation)", () => {
   it("reports incomplete quotes when stock is missing (no substitutions)", async () => {
     await updateSimulatorSettings({ outOfStock: ["slope-45-2x4|red"] }, "test");
     const c = cust();
-    const designId = await createDesign(c, "house");
+    const designId = await createDesign(c, "cottage");
     const orderId = await createOrder(c, { designId, contact: CONTACT, adultConfirmed: true });
     await runAll();
     expect(await orderStatus(orderId)).toBe("exception");
@@ -136,14 +136,14 @@ describe("order workflow (simulation)", () => {
   it("re-checks stock before purchase", async () => {
     const { customer, orderId, quote } = await orderAwaitingAcceptance();
     await acceptQuote(customer, orderId, { quoteId: quote.id, paymentMethod: "sim_ok" });
-    await updateSimulatorSettings({ outOfStock: ["brick-1x2|white"] }, "test");
+    await updateSimulatorSettings({ outOfStock: ["brick-1x2-nt|trans-clear"] }, "test");
     await runAll();
     expect((await openExceptions(orderId))[0].kind).toBe("quote_changed");
   });
 
   it("blocks invalid designs from procurement", async () => {
     const c = cust();
-    const designId = await createDesign(c, "house");
+    const designId = await createDesign(c, "cottage");
     const db = await getDb();
     // Corrupt the stored revision so its model has a collision.
     const rev = (await db.query<{ id: string; model: { parts: unknown[] } }>(`SELECT r.id, r.model FROM design_revisions r JOIN designs d ON d.current_revision_id = r.id WHERE d.id = $1`, [designId])).rows[0];
@@ -159,7 +159,7 @@ describe("order workflow (simulation)", () => {
   it("enforces the per-order and daily spending limits", async () => {
     await updateSettings({ maxOrderSupplierCents: 500 }, "test");
     const c = cust();
-    const designId = await createDesign(c, "house");
+    const designId = await createDesign(c, "cottage");
     const orderId = await createOrder(c, { designId, contact: CONTACT, adultConfirmed: true });
     await runAll();
     expect((await openExceptions(orderId))[0].kind).toBe("limit_exceeded");
@@ -289,7 +289,7 @@ describe("order workflow (simulation)", () => {
   it("rejects resolution actions not offered for an exception", async () => {
     await updateSimulatorSettings({ outOfStock: ["slope-45-2x4|red"] }, "test");
     const c = cust();
-    const designId = await createDesign(c, "house");
+    const designId = await createDesign(c, "cottage");
     const orderId = await createOrder(c, { designId, contact: CONTACT, adultConfirmed: true });
     await runAll();
     const [ex] = await openExceptions(orderId);

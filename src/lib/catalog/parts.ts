@@ -12,7 +12,7 @@ export type TopStuds = "all" | "back-row" | "none";
 export interface PartDef {
   id: string;
   name: string;
-  category: "brick" | "plate" | "slope" | "round" | "wheel";
+  category: "brick" | "plate" | "tile" | "slope" | "round" | "wheel";
   w: number;
   d: number;
   h: number;
@@ -32,32 +32,64 @@ const P = (p: Omit<PartDef, "bottomAcceptsStuds" | "weightGrams"> & Partial<Part
   ...p,
 });
 
+const brick = (w: number, d: number, bl: string, name = `Brick ${d} x ${w}`) =>
+  P({ id: `brick-${d}x${w}`, name, category: "brick", w, d, h: 3, shape: "box", topStuds: "all", bricklinkId: bl });
+const plate = (w: number, d: number, bl: string) =>
+  P({ id: `plate-${d}x${w}`, name: `Plate ${d} x ${w}`, category: "plate", w, d, h: 1, shape: "box", topStuds: "all", bricklinkId: bl });
+const tile = (w: number, d: number, bl: string) =>
+  P({ id: `tile-${d}x${w}`, name: `Tile ${d} x ${w}`, category: "tile", w, d, h: 1, shape: "box", topStuds: "none", bricklinkId: bl });
+
 export const PARTS: Record<string, PartDef> = Object.fromEntries(
   [
-    // Bricks 1xN
-    P({ id: "brick-1x1", name: "Brick 1 x 1", category: "brick", w: 1, d: 1, h: 3, shape: "box", topStuds: "all", bricklinkId: "3005" }),
-    P({ id: "brick-1x2", name: "Brick 1 x 2", category: "brick", w: 2, d: 1, h: 3, shape: "box", topStuds: "all", bricklinkId: "3004" }),
-    P({ id: "brick-1x3", name: "Brick 1 x 3", category: "brick", w: 3, d: 1, h: 3, shape: "box", topStuds: "all", bricklinkId: "3622" }),
-    P({ id: "brick-1x4", name: "Brick 1 x 4", category: "brick", w: 4, d: 1, h: 3, shape: "box", topStuds: "all", bricklinkId: "3010" }),
-    P({ id: "brick-1x6", name: "Brick 1 x 6", category: "brick", w: 6, d: 1, h: 3, shape: "box", topStuds: "all", bricklinkId: "3009" }),
+    // Bricks (local w = long side along x, d = depth)
+    brick(1, 1, "3005"),
+    brick(2, 1, "3004"),
+    brick(3, 1, "3622"),
+    brick(4, 1, "3010"),
+    brick(6, 1, "3009"),
+    brick(8, 1, "3008"),
     P({ id: "brick-1x2-nt", name: "Brick 1 x 2 without Bottom Tube", category: "brick", w: 2, d: 1, h: 3, shape: "box", topStuds: "all", bricklinkId: "3065" }),
-    // Bricks 2xN
-    P({ id: "brick-2x2", name: "Brick 2 x 2", category: "brick", w: 2, d: 2, h: 3, shape: "box", topStuds: "all", bricklinkId: "3003" }),
-    P({ id: "brick-2x4", name: "Brick 2 x 4", category: "brick", w: 4, d: 2, h: 3, shape: "box", topStuds: "all", bricklinkId: "3001" }),
+    brick(2, 2, "3003"),
+    brick(3, 2, "3002"),
+    brick(4, 2, "3001"),
+    brick(6, 2, "2456"),
     // Plates
-    P({ id: "plate-2x4", name: "Plate 2 x 4", category: "plate", w: 4, d: 2, h: 1, shape: "box", topStuds: "all", bricklinkId: "3020" }),
-    P({ id: "plate-2x6", name: "Plate 2 x 6", category: "plate", w: 6, d: 2, h: 1, shape: "box", topStuds: "all", bricklinkId: "3795" }),
-    P({ id: "plate-2x8", name: "Plate 2 x 8", category: "plate", w: 8, d: 2, h: 1, shape: "box", topStuds: "all", bricklinkId: "3034" }),
-    P({ id: "plate-2x10", name: "Plate 2 x 10", category: "plate", w: 10, d: 2, h: 1, shape: "box", topStuds: "all", bricklinkId: "3832" }),
-    P({ id: "plate-2x12", name: "Plate 2 x 12", category: "plate", w: 12, d: 2, h: 1, shape: "box", topStuds: "all", bricklinkId: "2445" }),
-    P({ id: "plate-4x4", name: "Plate 4 x 4", category: "plate", w: 4, d: 4, h: 1, shape: "box", topStuds: "all", bricklinkId: "3031" }),
-    P({ id: "plate-4x6", name: "Plate 4 x 6", category: "plate", w: 6, d: 4, h: 1, shape: "box", topStuds: "all", bricklinkId: "3032" }),
-    P({ id: "plate-4x10", name: "Plate 4 x 10", category: "plate", w: 10, d: 4, h: 1, shape: "box", topStuds: "all", bricklinkId: "3030" }),
-    P({ id: "plate-6x6", name: "Plate 6 x 6", category: "plate", w: 6, d: 6, h: 1, shape: "box", topStuds: "all", bricklinkId: "3958" }),
-    P({ id: "plate-6x8", name: "Plate 6 x 8", category: "plate", w: 8, d: 6, h: 1, shape: "box", topStuds: "all", bricklinkId: "3036" }),
-    P({ id: "plate-6x10", name: "Plate 6 x 10", category: "plate", w: 10, d: 6, h: 1, shape: "box", topStuds: "all", bricklinkId: "3033" }),
+    plate(1, 1, "3024"),
+    plate(2, 1, "3023"),
+    plate(3, 1, "3623"),
+    plate(4, 1, "3710"),
+    plate(6, 1, "3666"),
+    plate(8, 1, "3460"),
+    plate(2, 2, "3022"),
+    plate(3, 2, "3021"),
+    plate(4, 2, "3020"),
+    plate(6, 2, "3795"),
+    plate(8, 2, "3034"),
+    plate(10, 2, "3832"),
+    plate(12, 2, "2445"),
+    plate(4, 4, "3031"),
+    plate(6, 4, "3032"),
+    plate(8, 4, "3035"),
+    plate(10, 4, "3030"),
+    plate(12, 4, "3029"),
+    plate(6, 6, "3958"),
+    plate(8, 6, "3036"),
+    plate(10, 6, "3033"),
+    plate(12, 6, "3028"),
+    plate(8, 8, "41539"),
+    // Tiles (smooth tops)
+    tile(1, 1, "3070b"),
+    tile(2, 1, "3069b"),
+    tile(4, 1, "2431"),
+    tile(6, 1, "6636"),
+    tile(2, 2, "3068b"),
+    // Round parts
     P({ id: "plate-round-1x1", name: "Plate Round 1 x 1", category: "round", w: 1, d: 1, h: 1, shape: "round", topStuds: "all", bricklinkId: "4073" }),
+    P({ id: "brick-round-1x1", name: "Brick Round 1 x 1", category: "round", w: 1, d: 1, h: 3, shape: "round", topStuds: "all", bricklinkId: "3062b" }),
+    P({ id: "brick-round-2x2", name: "Brick Round 2 x 2 with Axle Hole", category: "round", w: 2, d: 2, h: 3, shape: "round", topStuds: "all", bricklinkId: "3941" }),
+    P({ id: "plate-round-2x2", name: "Plate Round 2 x 2 with Axle Hole", category: "round", w: 2, d: 2, h: 1, shape: "round", topStuds: "all", bricklinkId: "4032" }),
     // Slopes (45 degrees): low edge toward local -z, studs on the back row.
+    P({ id: "slope-45-2x1", name: "Slope 45 2 x 1", category: "slope", w: 1, d: 2, h: 3, shape: "slope", topStuds: "back-row", bricklinkId: "3040" }),
     P({ id: "slope-45-2x2", name: "Slope 45 2 x 2", category: "slope", w: 2, d: 2, h: 3, shape: "slope", topStuds: "back-row", bricklinkId: "3039" }),
     P({ id: "slope-45-2x4", name: "Slope 45 2 x 4", category: "slope", w: 4, d: 2, h: 3, shape: "slope", topStuds: "back-row", bricklinkId: "3037" }),
     P({ id: "ridge-45-2x2", name: "Slope 45 2 x 2 Double", category: "slope", w: 2, d: 2, h: 3, shape: "ridge", topStuds: "none", bricklinkId: "3043" }),
@@ -87,10 +119,3 @@ export function getPart(id: string): PartDef {
   return p;
 }
 
-/** Lengths available for 1-wide bricks, keyed by stud length. */
-export const BRICK_1X_BY_LEN: Record<number, string> = { 1: "brick-1x1", 2: "brick-1x2", 3: "brick-1x3", 4: "brick-1x4", 6: "brick-1x6" };
-export const BRICK_2X_BY_LEN: Record<number, string> = { 2: "brick-2x2", 4: "brick-2x4" };
-export const SLOPE_2X_BY_LEN: Record<number, string> = { 2: "slope-45-2x2", 4: "slope-45-2x4" };
-export const RIDGE_2X_BY_LEN: Record<number, string> = { 2: "ridge-45-2x2", 4: "ridge-45-2x4" };
-export const PLATE_2X_BY_LEN: Record<number, string> = { 4: "plate-2x4", 6: "plate-2x6", 8: "plate-2x8", 10: "plate-2x10", 12: "plate-2x12" };
-export const PLATE_6X_BY_LEN: Record<number, string> = { 6: "plate-6x6", 8: "plate-6x8", 10: "plate-6x10" };

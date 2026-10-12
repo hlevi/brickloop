@@ -4,21 +4,28 @@ import { getPart } from "@/lib/catalog/parts";
 import { applyTool } from "@/lib/edit/tools";
 import { renderIso } from "@/lib/instructions/iso";
 import { summarizeSteps } from "@/lib/instructions/steps";
-import { buildModel, defaultParams } from "@/lib/model/templates";
+import { compileBlueprint, grid } from "@/lib/model/kit";
+import { buildModel, defaultParams, KITS } from "@/lib/model/templates";
 import type { DesignParams } from "@/lib/model/types";
 import { validateModel } from "@/lib/validation/validate";
 
+/** Every option combination of every kit. */
 function allConfigs(): DesignParams[] {
   const out: DesignParams[] = [];
-  for (const width of [6, 8, 10] as const)
-    for (const roofStyle of ["gable", "flat"] as const) out.push({ ...(defaultParams("house") as Extract<DesignParams, { template: "house" }>), width, roofStyle });
-  for (const ladderLength of [6, 8, 10] as const) out.push({ ...(defaultParams("firetruck") as Extract<DesignParams, { template: "firetruck" }>), ladderLength });
-  for (const bodyLength of [2, 3, 4, 5] as const) out.push({ ...(defaultParams("creature") as Extract<DesignParams, { template: "creature" }>), bodyLength });
+  for (const k of KITS) {
+    let combos: Record<string, string>[] = [{}];
+    for (const o of k.options) combos = combos.flatMap((c) => o.values.map((v) => ({ ...c, [o.id]: v.id })));
+    for (const options of combos) out.push({ ...defaultParams(k.id), options });
+  }
   return out;
 }
 
-describe("starter models", () => {
-  it.each(allConfigs().map((c) => [`${c.template}:${JSON.stringify(c).length}`, c] as const))("%s passes digital validation", (_n, params) => {
+describe("kits", () => {
+  it("cover every age band from 4+ to 12+", () => {
+    expect(new Set(KITS.map((k) => k.ageBand))).toEqual(new Set(["4+", "6+", "7+", "8+", "9+", "12+"]));
+  });
+
+  it.each(allConfigs().map((c) => [`${c.template} ${JSON.stringify(c.options)}`, c] as const))("%s passes digital validation", (_n, params) => {
     const model = buildModel(params);
     const v = validateModel(model);
     expect(v.errors).toEqual([]);
@@ -34,7 +41,6 @@ describe("starter models", () => {
       const accessoryCount = model.parts.reduce((n, p) => n + (getPart(p.partId).accessories ?? []).reduce((a, x) => a + x.qty, 0), 0);
       expect(bom.totalPieces).toBe(model.parts.length + accessoryCount);
       expect(stepTotal).toBe(bom.totalPieces);
-      // every step page shows at least one new part and the preview draws something per step
       for (const s of model.steps) {
         expect(model.parts.some((p) => p.step === s.index)).toBe(true);
         expect(renderIso(model.parts, { uptoStep: s.index, highlightStep: s.index }).ops.length).toBeGreaterThan(0);
@@ -42,16 +48,19 @@ describe("starter models", () => {
     }
   });
 
+  it("is deterministic", () => {
+    for (const k of KITS) expect(JSON.stringify(buildModel(defaultParams(k.id)))).toBe(JSON.stringify(buildModel(defaultParams(k.id))));
+  });
+
   it("supported edits change the model, parts list and structural key consistently", () => {
-    const base = defaultParams("house");
-    const wider = applyTool(base, { name: "set_house_width", input: { width: 10 } });
-    expect(wider.ok).toBe(true);
-    if (!wider.ok) return;
+    const base = defaultParams("cottage");
+    const roomy = applyTool(base, { name: "set_option", input: { option: "size", value: "roomy" } });
+    expect(roomy.ok).toBe(true);
+    if (!roomy.ok) return;
     const a = buildModel(base);
-    const b = buildModel(wider.params);
+    const b = buildModel(roomy.params);
     expect(b.structuralKey).not.toBe(a.structuralKey);
-    expect(computeBom(b).lines.filter((l) => l.partId === "plate-6x10").reduce((n, l) => n + l.quantity, 0)).toBe(2); // base + roof
-    expect(computeBom(a).lines.find((l) => l.partId === "plate-6x10")).toBeUndefined();
+    expect(computeBom(b).totalPieces).toBeGreaterThan(computeBom(a).totalPieces);
 
     const recolor = applyTool(base, { name: "set_color", input: { component: "roof", color: "blue" } });
     expect(recolor.ok).toBe(true);
@@ -61,16 +70,30 @@ describe("starter models", () => {
     expect(c.parts.filter((p) => p.component === "roof").every((p) => p.colorId === "blue")).toBe(true);
     expect(computeBom(c).totalPieces).toBe(computeBom(a).totalPieces);
 
-    const ladder = applyTool(defaultParams("firetruck"), { name: "set_ladder_length", input: { length: 10 } });
-    expect(ladder.ok && computeBom(buildModel(ladder.params)).lines.some((l) => l.partId === "plate-2x10")).toBe(true);
-    const longer = applyTool(defaultParams("creature"), { name: "set_creature_length", input: { segments: 5 } });
-    expect(longer.ok && buildModel(longer.params).parts.filter((p) => p.component === "body").length).toBe(5);
+    const noChimney = applyTool(base, { name: "set_option", input: { option: "chimney", value: "no" } });
+    expect(noChimney.ok && buildModel(noChimney.params).parts.some((p) => p.component === "chimney")).toBe(false);
+    const taller = applyTool(defaultParams("rocket"), { name: "set_option", input: { option: "stages", value: "3" } });
+    expect(taller.ok && buildModel(taller.params).steps.some((s) => s.title === "Stage 3")).toBe(true);
   });
 
-  it("flat roof uses no slopes and gable roof has a ridge", () => {
-    const flat = buildModel({ ...(defaultParams("house") as Extract<DesignParams, { template: "house" }>), roofStyle: "flat" });
-    expect(flat.parts.some((p) => p.partId.startsWith("slope") || p.partId.startsWith("ridge"))).toBe(false);
-    const gable = buildModel(defaultParams("house"));
-    expect(gable.parts.some((p) => p.partId.startsWith("ridge"))).toBe(true);
+  it("racer wheels are pinned to holders", () => {
+    const m = buildModel(defaultParams("racer"));
+    const wheels = m.parts.filter((p) => p.partId === "wheel-8x6");
+    expect(wheels).toHaveLength(4);
+    expect(wheels.every((w) => m.parts.find((h) => h.uid === w.attachedTo)?.partId === "plate-2x2-wheel-holder")).toBe(true);
+  });
+});
+
+describe("kit compiler", () => {
+  it("bridges joints so stacked same-shape layers stay connected", () => {
+    const rows = grid(8, 2, () => "a");
+    const { parts } = compileBlueprint({ legend: { a: { color: "red" } }, layers: [{ kind: "brick", step: "s", rows }, { kind: "brick", rows }, { kind: "brick", rows }] }, {});
+    const model = { template: "t", templateVersion: "t", params: { template: "t", colors: {}, options: {} }, parts, components: [], steps: [{ index: 1, title: "s" }], structuralKey: "t" };
+    expect(validateModel(model).status).toBe("valid");
+  });
+
+  it("rejects malformed blueprints", () => {
+    expect(() => compileBlueprint({ legend: {}, layers: [{ kind: "brick", step: "s", rows: ["x"] }] }, {})).toThrow(/Unknown legend/);
+    expect(() => compileBlueprint({ legend: { s: { color: "red", slope: "front" } }, layers: [{ kind: "brick", step: "s", rows: ["s"] }] }, {})).toThrow(/2-deep/);
   });
 });

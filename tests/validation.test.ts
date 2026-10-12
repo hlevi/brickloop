@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildModel, defaultParams } from "@/lib/model/templates";
 import { validateModel } from "@/lib/validation/validate";
 
-const house = () => buildModel(defaultParams("house"));
+const house = () => buildModel(defaultParams("cottage"));
 
 describe("validation", () => {
   it("detects collisions", () => {

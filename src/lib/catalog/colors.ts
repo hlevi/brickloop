@@ -26,6 +26,8 @@ export const COLORS: Record<string, ColorDef> = {
   "dark-bluish-gray": { id: "dark-bluish-gray", name: "Dark Bluish Gray", hex: "#6C6E68", bricklinkColorId: 85 },
   orange: { id: "orange", name: "Orange", hex: "#FE8A18", bricklinkColorId: 4 },
   lime: { id: "lime", name: "Lime", hex: "#BBE90B", bricklinkColorId: 34 },
+  "dark-green": { id: "dark-green", name: "Dark Green", hex: "#184632", bricklinkColorId: 80 },
+  "bright-pink": { id: "bright-pink", name: "Bright Pink", hex: "#E4ADC8", bricklinkColorId: 104 },
   "trans-clear": { id: "trans-clear", name: "Trans-Clear", hex: "#DDEEFF", transparent: true, bricklinkColorId: 12 },
   "trans-light-blue": { id: "trans-light-blue", name: "Trans-Light Blue", hex: "#AEEFEC", transparent: true, bricklinkColorId: 15 },
 };
@@ -52,6 +54,8 @@ const COLOR_ALIASES: Record<string, string> = {
   "trans light blue": "trans-light-blue",
   "trans clear": "trans-clear",
   beige: "tan",
+  pink: "bright-pink",
+  "dark green": "dark-green",
 };
 
 export function resolveColorName(input: string): ColorId | null {
