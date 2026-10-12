@@ -6,6 +6,7 @@ import { renderBuilder, renderName } from "@/lib/creature/words";
 import { formatCents, statusLabel } from "@/lib/format";
 import type { CustomerOrderView, QuoteRow } from "@/lib/orders/service";
 import type { EnvironmentalReport } from "@/lib/environment";
+import "./order-view.css";
 
 type Data = CustomerOrderView & { environmental: EnvironmentalReport };
 
@@ -105,14 +106,14 @@ export default function OrderView({ orderId }: { orderId: string }) {
         ))}
       </ol>
 
-      <div className="editor">
+      <div className="editor order-grid">
         <div className="stack">
           {o.status === "awaiting_acceptance" && data.quote && (
             <QuoteBox quote={data.quote} sim={sim} fixed={fixed} budget={o.budget_cents} method={method} setMethod={setMethod} busy={busy} onAccept={() => act("accept", { quoteId: data.quote!.id, paymentMethod: method })} />
           )}
           {fixed && !data.acceptedQuote && o.status !== "awaiting_acceptance" && !["canceled", "refunded"].includes(o.status) && (
             <section className="panel">
-              <p style={{ margin: 0, fontSize: "1.6rem", fontWeight: 900 }}>{formatCents(o.fixed_price_cents!)}</p>
+              <p className="order-fixed-price">{formatCents(o.fixed_price_cents!)}</p>
               <p style={{ margin: 0, fontWeight: 700 }}>Fixed price, includes delivery and taxes</p>
               <p className="small muted" style={{ marginBottom: 0 }}>
                 We confirm the exact parts with the supplier before asking you to accept this price. {sim && <span className="badge sim">SIMULATION</span>}
@@ -173,7 +174,7 @@ export default function OrderView({ orderId }: { orderId: string }) {
             <p className="small">
               {o.frozen_bom.totalPieces} pieces &middot; design frozen at checkout &middot;{" "}
               <a href={`/api/orders/${orderId}/instructions`} target="_blank" rel="noreferrer">
-                Building instructions (PDF)
+                {fixed && identity ? `${renderName(identity)}'s building booklet (PDF)` : "Building instructions (PDF)"}
               </a>
             </p>
           </section>

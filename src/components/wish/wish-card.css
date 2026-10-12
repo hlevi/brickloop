@@ -279,10 +279,274 @@
   line-height: 1;
 }
 
+/* A soft dotted backdrop, like the Lab stage. */
+.wk-dots {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.45) 1.6px, transparent 1.8px);
+  background-size: 22px 22px;
+}
+.wk-inner {
+  position: relative;
+}
+
+/* The status icon pops in gently when the stage changes. */
+.wk-status-icon {
+  display: inline-block;
+  animation: wk-pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+@keyframes wk-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Once ordered: where the bricks are, as a row of stops (no dates, no countdowns). */
+.wk-journey {
+  list-style: none;
+  margin: 0;
+  padding: 18px 12px 14px;
+  background: #fff;
+  border: 4px solid #1d1d1f;
+  border-radius: 24px;
+  box-shadow: 0 6px 0 #1d1d1f;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  position: relative;
+}
+.wk-journey li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  min-width: 0;
+}
+/* The road between stops. */
+.wk-journey li + li::before {
+  content: "";
+  position: absolute;
+  top: 27px;
+  right: calc(50% + 30px);
+  left: calc(-50% + 30px);
+  height: 6px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(90deg, #d4d4d8 0 8px, transparent 8px 14px);
+}
+.wk-journey li.done + li::before {
+  background: #3bb273;
+}
+.wk-journey-dot {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 4px solid #1d1d1f;
+  background: #f4f4f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.7rem;
+  line-height: 1;
+  position: relative;
+}
+.wk-journey li.next .wk-journey-dot {
+  border-color: #c4c4c8;
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+.wk-journey li.done .wk-journey-dot {
+  background: #d9f5e5;
+}
+.wk-journey li.done .wk-journey-dot::after {
+  content: "✓";
+  position: absolute;
+  right: -8px;
+  bottom: -6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #237841;
+  color: #fff;
+  border: 3px solid #1d1d1f;
+  font-size: 0.75rem;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wk-journey li.now .wk-journey-dot {
+  background: #ffe066;
+  box-shadow: 0 0 0 6px rgba(255, 224, 102, 0.55);
+  animation: wk-bob 2.4s ease-in-out infinite;
+}
+@keyframes wk-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+.wk-journey-label {
+  font-weight: 800;
+  font-size: 0.95rem;
+  line-height: 1.15;
+}
+.wk-journey li.next .wk-journey-label {
+  color: #8a8a90;
+}
+.wk-arrived .wk-status {
+  background: #ffe066;
+}
+
+/* The sticker the grown-up saw, kept after ordering. */
+.wk-note-row.is-kept {
+  display: flex;
+  justify-content: center;
+}
+.wk-note-row.is-kept .wk-note {
+  background: #ffe066;
+  min-width: min(100%, 320px);
+}
+
+/* Confetti when the bricks arrive. */
+.wk-confetti {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 2;
+}
+.wk-confetti i {
+  position: absolute;
+  top: -20px;
+  width: 10px;
+  height: 16px;
+  border-radius: 2px;
+  animation: wk-fall 2.2s cubic-bezier(0.3, 0.6, 0.5, 1) forwards;
+}
+.wk-confetti i.round {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+@keyframes wk-fall {
+  to {
+    transform: translate(var(--drift), 105vh) rotate(var(--spin));
+    opacity: 0.85;
+  }
+}
+
+/* Phones: the creature, the code and the status fit on one screen. */
+@media (max-width: 560px) {
+  .wk-inner {
+    padding: 12px 12px 24px;
+    gap: 10px;
+  }
+  .wk-main {
+    gap: 12px;
+  }
+  .wk-close {
+    min-height: 48px;
+    font-size: 1rem;
+    padding: 0 16px;
+  }
+  .wk-title {
+    font-size: 1.7rem;
+  }
+  .wk-body {
+    gap: 12px;
+  }
+  .wk-creature {
+    padding: 10px;
+  }
+  .wk-art {
+    min-height: 120px;
+  }
+  .wk-art svg {
+    max-height: 140px;
+  }
+  .wk-name {
+    margin-top: 4px;
+  }
+  .wk-wish {
+    gap: 12px;
+  }
+  .wk-code-box {
+    flex-wrap: nowrap;
+    gap: 12px;
+    padding: 12px;
+  }
+  .wk-qr {
+    width: 116px;
+    height: 116px;
+  }
+  .wk-code-side {
+    align-items: flex-start;
+    text-align: left;
+  }
+  .wk-hint {
+    font-size: 0.95rem;
+  }
+  .wk-code {
+    font-size: 1.75rem;
+    letter-spacing: 0.03em;
+  }
+  .wk-status {
+    min-height: 56px;
+    font-size: 1.15rem;
+    padding: 8px 16px;
+  }
+  .wk-note-row:not(.is-kept) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .wk-note-row:not(.is-kept) .wk-note {
+    flex-direction: column;
+    gap: 4px;
+    min-height: 96px;
+    font-size: 0.88rem;
+    padding: 8px 6px;
+  }
+  .wk-journey {
+    padding: 14px 4px 12px;
+  }
+  .wk-journey-dot {
+    width: 48px;
+    height: 48px;
+    font-size: 1.35rem;
+    border-width: 3px;
+  }
+  .wk-journey li + li::before {
+    top: 21px;
+    right: calc(50% + 24px);
+    left: calc(-50% + 24px);
+    height: 5px;
+  }
+  .wk-journey-label {
+    font-size: 0.78rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wk-close:active,
   .wk-big-btn:active,
   .wk-note:active {
     transform: none;
+  }
+  .wk-status-icon,
+  .wk-journey li.now .wk-journey-dot {
+    animation: none;
+  }
+  .wk-confetti {
+    display: none;
   }
 }

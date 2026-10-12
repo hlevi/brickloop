@@ -1,0 +1,19 @@
+/* Order page (OrderView). The shared .editor grid uses a plain 1fr column on phones,
+   which lets the 360 px preview push the page wider than the screen. */
+@media (max-width: 860px) {
+  .editor.order-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.order-grid .preview svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Creature Lab orders: the fixed price, shown before the quote arrives. */
+.order-fixed-price {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 900;
+  line-height: 1.1;
+}

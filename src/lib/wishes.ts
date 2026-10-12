@@ -128,12 +128,16 @@ interface WishRow {
 
 const CLOSED_ORDER = ["canceled", "refunded"];
 
-async function orderOf(q: Queryable, orderId: string | null): Promise<{ status: string; held_from_status: string | null; customer_id: string } | null> {
+interface OrderLink {
+  status: string;
+  held_from_status: string | null;
+  customer_id: string;
+  design_id: string;
+}
+
+async function orderOf(q: Queryable, orderId: string | null): Promise<OrderLink | null> {
   if (!orderId) return null;
-  const { rows } = await q.query<{ status: string; held_from_status: string | null; customer_id: string }>(
-    `SELECT status, held_from_status, customer_id FROM orders WHERE id = $1`,
-    [orderId],
-  );
+  const { rows } = await q.query<OrderLink>(`SELECT status, held_from_status, customer_id, design_id FROM orders WHERE id = $1`, [orderId]);
   return rows[0] ?? null;
 }
 
@@ -173,6 +177,18 @@ export interface KidWish {
  */
 export async function createWish(customerId: string, designId: string, note: unknown): Promise<KidWish> {
   if (!isWishNote(note)) throw new AppError("invalid_note", "Pick one of the stickers");
+  return upsertWish(customerId, designId, note);
+}
+
+/**
+ * Open the wish card: the active wish for the design's current revision with the
+ * sticker the kid already picked, or a new wish with the default sticker.
+ */
+export async function openWish(customerId: string, designId: string): Promise<KidWish> {
+  return upsertWish(customerId, designId, null);
+}
+
+async function upsertWish(customerId: string, designId: string, note: WishNote | null): Promise<KidWish> {
   const db = await getDb();
   return db.tx(async (q) => {
     const d = (
@@ -192,23 +208,25 @@ export async function createWish(customerId: string, designId: string, note: unk
       order = await orderOf(q, latest.order_id);
       if (isActive(latest, order)) {
         w = latest;
-        if (w.note !== note && !hasActiveOrder(order)) {
+        // Once the bricks are ordered, the sticker stays the one the grown-up saw.
+        if (note && w.note !== note && !hasActiveOrder(order)) {
           await q.query(`UPDATE wishes SET note = $2 WHERE code = $1`, [w.code, note]);
           w = { ...w, note };
         }
       } else order = null;
     }
     if (!w) {
+      const first: WishNote = note ?? "invented";
       for (let attempt = 0; attempt < 5 && !w; attempt++) {
         const { rows } = await q.query<WishRow>(
           `INSERT INTO wishes(code, design_id, design_revision_id, note, expires_at) VALUES ($1,$2,$3,$4, now() + ($5 || ' days')::interval)
            ON CONFLICT (code) DO NOTHING RETURNING *`,
-          [newWishCode(), designId, d.current_revision_id, note, String(WISH_TTL_DAYS)],
+          [newWishCode(), designId, d.current_revision_id, first, String(WISH_TTL_DAYS)],
         );
         w = rows[0];
       }
       if (!w) throw new AppError("wish_failed", "Could not make a wish code. Please try again.", 503);
-      await audit(q, `customer:${customerId}`, "wish.create", "design", designId, { revisionId: d.current_revision_id, note });
+      await audit(q, `customer:${customerId}`, "wish.create", "design", designId, { revisionId: d.current_revision_id, note: first });
     }
     const model = rev.model;
     return {
@@ -312,9 +330,10 @@ export async function getWishForGrownup(rawCode: string): Promise<GrownupWish> {
 /**
  * "Order these bricks": copy the frozen revision into a new design owned by the
  * grown-up (identical params and structuralKey; the kid's design is untouched).
- * Idempotent per grown-up. A later claim by a different grown-up (another device)
- * takes over until the bricks are ordered. Returns the open order if this grown-up
- * already placed one.
+ * Idempotent per grown-up: claiming again (any number of times, from any tab)
+ * returns the same copy. Grown-ups on other devices get their own copies; the
+ * first to place an order wins, and after that nobody else can claim. Returns
+ * the open order if this grown-up already placed one.
  */
 export async function claimWish(adultCustomerId: string, rawCode: string): Promise<{ designId: string; orderId: string | null }> {
   const code = normalizeWishCode(rawCode);
@@ -325,18 +344,36 @@ export async function claimWish(adultCustomerId: string, rawCode: string): Promi
     if (!w) throw inactive();
     const order = await orderOf(q, w.order_id);
     if (!isActive(w, order)) throw inactive();
-    if (w.claimed_design_id) {
-      const owner = (await q.query<{ customer_id: string }>(`SELECT customer_id FROM designs WHERE id = $1`, [w.claimed_design_id])).rows[0];
-      if (owner?.customer_id === adultCustomerId) {
-        return { designId: w.claimed_design_id, orderId: hasActiveOrder(order) && order!.customer_id === adultCustomerId ? w.order_id : null };
-      }
+    if (hasActiveOrder(order)) {
+      if (order!.customer_id === adultCustomerId) return { designId: order!.design_id, orderId: w.order_id };
+      throw new AppError("already_ordered", "A grown-up already ordered these bricks.", 409);
     }
-    if (hasActiveOrder(order)) throw new AppError("already_ordered", "A grown-up already ordered these bricks.", 409);
+    const mine = (
+      await q.query<{ design_id: string }>(
+        `SELECT c.design_id FROM wish_claims c JOIN designs d ON d.id = c.design_id WHERE c.code = $1 AND d.customer_id = $2 ORDER BY c.created_at DESC LIMIT 1`,
+        [code, adultCustomerId],
+      )
+    ).rows[0];
+    if (mine) {
+      await q.query(`UPDATE wishes SET claimed_design_id = $2 WHERE code = $1`, [code, mine.design_id]);
+      return { designId: mine.design_id, orderId: null };
+    }
     const designId = await createDesignFromRevision(adultCustomerId, w.design_revision_id, "wish", { note: `From wish ${formatWishCode(code)}`, q });
+    const copy = (await q.query<{ current_revision_id: string }>(`SELECT current_revision_id FROM designs WHERE id = $1`, [designId])).rows[0];
+    await q.query(`INSERT INTO wish_claims(design_id, code, revision_id) VALUES ($1,$2,$3)`, [designId, code, copy.current_revision_id]);
     await q.query(`UPDATE wishes SET claimed_design_id = $2, status = CASE WHEN status = 'waiting' THEN 'seen' ELSE status END WHERE code = $1`, [code, designId]);
     await audit(q, `customer:${adultCustomerId}`, "wish.claim", "design", designId, {});
     return { designId, orderId: null };
   });
+}
+
+/** The wish claim a grown-up's design came from, or null if it was not created by a claim. */
+async function claimOf(q: Queryable, designId: string): Promise<{ code: string; revision_id: string; order_id: string | null; expires_at: string | Date } | null> {
+  const { rows } = await q.query<{ code: string; revision_id: string; order_id: string | null; expires_at: string | Date }>(
+    `SELECT c.code, c.revision_id, w.order_id, w.expires_at FROM wish_claims c JOIN wishes w ON w.code = c.code WHERE c.design_id = $1`,
+    [designId],
+  );
+  return rows[0] ?? null;
 }
 
 /** Checkout guard: the wish (if any) that a grown-up's claimed design came from. */
@@ -345,8 +382,74 @@ export async function wishForClaimedDesign(
   q?: Queryable,
 ): Promise<{ code: string; orderId: string | null; orderStatus: string | null; orderCustomerId: string | null } | null> {
   const db = q ?? (await getDb());
-  const w = (await db.query<WishRow>(`SELECT * FROM wishes WHERE claimed_design_id = $1`, [designId])).rows[0];
-  if (!w) return null;
-  const order = await orderOf(db, w.order_id);
-  return { code: w.code, orderId: w.order_id, orderStatus: order?.status ?? null, orderCustomerId: order?.customer_id ?? null };
+  const c = await claimOf(db, designId);
+  if (!c) return null;
+  const order = await orderOf(db, c.order_id);
+  return { code: c.code, orderId: c.order_id, orderStatus: order?.status ?? null, orderCustomerId: order?.customer_id ?? null };
+}
+
+/**
+ * Inside createOrder's transaction: lock the wish behind a claimed creature and
+ * return what to freeze. Throws not_found when the design was not created by a
+ * wish claim (so a kid's Lab design never reaches an order), and refuses when the
+ * code has expired or the bricks are already ordered. The frozen copy is ordered
+ * even if the grown-up's copy was edited later.
+ */
+export async function lockClaimForOrder(q: Queryable, designId: string): Promise<{ code: string; revisionId: string }> {
+  const c = await claimOf(q, designId);
+  if (!c) throw new AppError("not_found", "Design not found", 404);
+  const w = (await q.query<WishRow>(`SELECT * FROM wishes WHERE code = $1 FOR UPDATE`, [c.code])).rows[0];
+  const order = await orderOf(q, w.order_id);
+  if (hasActiveOrder(order)) throw new AppError("already_ordered", "These bricks are already ordered. See My orders.", 409);
+  if (!isActive(w, order)) throw new AppError("wish_inactive", "This wish code isn't active any more. Ask your young inventor to tap “Show a grown-up” again for a fresh code.", 409);
+  return { code: c.code, revisionId: c.revision_id };
+}
+
+/** Called by createOrder in the same transaction: the kid now sees "Ordered!". */
+export async function markWishOrdered(q: Queryable, code: string, orderId: string, designId: string) {
+  await q.query(`UPDATE wishes SET status = 'ordered', order_id = $2, claimed_design_id = $3 WHERE code = $1`, [code, orderId, designId]);
+}
+
+/** What the grown-up's checkout shows for a claimed creature: the frozen copy, never later edits. */
+export interface ClaimedCreature {
+  code: string;
+  name: string;
+  builder: string;
+  model: DesignModel;
+  digitalCheckPassed: boolean;
+  pieces: number;
+  steps: number;
+  buildMinutes: number;
+  ageBand: string;
+  /** Not expired, or ordered. */
+  active: boolean;
+  openOrder: { id: string; mine: boolean } | null;
+}
+
+export async function claimedCreature(customerId: string, designId: string): Promise<ClaimedCreature | null> {
+  const db = await getDb();
+  const c = (
+    await db.query<{ code: string; model: DesignModel; validation: ValidationResult; order_id: string | null; expires_at: string | Date }>(
+      `SELECT c.code, r.model, r.validation, w.order_id, w.expires_at FROM wish_claims c
+       JOIN designs d ON d.id = c.design_id JOIN design_revisions r ON r.id = c.revision_id JOIN wishes w ON w.code = c.code
+       WHERE c.design_id = $1 AND d.customer_id = $2`,
+      [designId, customerId],
+    )
+  ).rows[0];
+  if (!c) return null;
+  const order = await orderOf(db, c.order_id);
+  const m = c.model;
+  return {
+    code: formatWishCode(c.code),
+    name: renderName(m.params.identity),
+    builder: renderBuilder(m.params.identity),
+    model: m,
+    digitalCheckPassed: c.validation.status === "valid",
+    pieces: summarizeSteps(m).reduce((n, s) => n + s.pieceCount, 0),
+    steps: m.steps.length,
+    buildMinutes: buildMinutes(m.steps.length),
+    ageBand: getKit(m.template).ageBand,
+    active: new Date(c.expires_at).getTime() > Date.now() || hasActiveOrder(order),
+    openOrder: hasActiveOrder(order) ? { id: c.order_id!, mine: order!.customer_id === customerId } : null,
+  };
 }

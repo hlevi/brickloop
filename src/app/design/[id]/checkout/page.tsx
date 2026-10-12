@@ -1,45 +1,48 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDesignView } from "@/lib/designs";
-import { renderBuilder } from "@/lib/creature/words";
 import { getCustomerId } from "@/lib/http";
 import { formatCents } from "@/lib/format";
 import { renderIso, toSvg } from "@/lib/instructions/iso";
 import { liveReadiness } from "@/lib/orders/live";
 import { getSettings } from "@/lib/settings";
-import { wishForClaimedDesign } from "@/lib/wishes";
+import { isUuid } from "@/lib/util";
+import { claimedCreature } from "@/lib/wishes";
 import CheckoutForm from "@/components/CheckoutForm";
+import "@/components/wish/wish.css";
 
 export default async function Checkout(props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
   const cid = await getCustomerId(false);
-  const view = cid ? await getDesignView(cid, id).catch(() => null) : null;
-  if (!view) return <p className="error">Design not found.</p>;
+  const view = cid && isUuid(id) ? await getDesignView(cid, id).catch(() => null) : null;
+  if (!view) notFound();
 
   if (view.lab) {
-    // Creature Lab designs reach checkout only as a grown-up's copy made by claiming a wish.
-    const wish = await wishForClaimedDesign(id);
-    if (!wish) notFound();
+    // Creature Lab designs reach checkout only as a grown-up's copy made by claiming a wish,
+    // and the frozen copy is what gets ordered (never later edits). Kids never get here.
+    const c = await claimedCreature(cid!, id);
+    if (!c) notFound();
     const [settings, readiness] = await Promise.all([getSettings(), liveReadiness()]);
-    const openOrder = wish.orderId && wish.orderStatus && !["canceled", "refunded"].includes(wish.orderStatus) ? wish : null;
-    const svg = toSvg(renderIso(view.model.parts), { width: 220 });
+    const svg = toSvg(renderIso(c.model.parts), { width: 260 });
     return (
-      <div className="stack" style={{ maxWidth: 720 }}>
-        <h1 style={{ marginBottom: 0 }}>Order {view.name}</h1>
-        <section className="panel row" style={{ gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-          <div
-            className="preview"
-            style={{ background: "linear-gradient(180deg,#fbfaf7,#efede6)", borderRadius: 10, padding: 6, display: "flex" }}
-            role="img"
-            aria-label={`${view.name} in real bricks`}
-            dangerouslySetInnerHTML={{ __html: svg }}
-          />
-          <div className="stack" style={{ gap: 4, flex: "1 1 220px" }}>
-            <p style={{ margin: 0 }}>
-              Invented by <strong>{renderBuilder(view.params.identity)}</strong> &middot; {view.bom.totalPieces} pieces &middot; {view.model.steps.length} steps
+      <div className="wg-checkout">
+        <p className="wg-eyebrow">
+          Order a wish &middot; code {c.code}
+        </p>
+        <section className="panel wg-summary">
+          <div className="wg-summary-art" role="img" aria-label={`${c.name} in real bricks`} dangerouslySetInnerHTML={{ __html: svg }} />
+          <div className="wg-summary-text">
+            <h1 className="wg-summary-name">{c.name}</h1>
+            <p className="wg-by" style={{ marginTop: 0 }}>
+              Invented by <strong>{c.builder}</strong>
             </p>
-            <p style={{ margin: 0, fontSize: "1.8rem", fontWeight: 900, lineHeight: 1.1 }}>{formatCents(settings.creaturePriceCents)}</p>
-            <p style={{ margin: 0, fontWeight: 700 }}>Fixed price, includes delivery and taxes</p>
+            <p className="small muted" style={{ margin: 0 }}>
+              {c.pieces} genuine new pieces &middot; {c.steps} steps &middot; about {c.buildMinutes} minutes to build &middot; Suitable {c.ageBand}, contains small parts
+            </p>
+            <div className="wg-summary-price">
+              <p className="wg-price">{formatCents(settings.creaturePriceCents)}</p>
+              <p className="wg-price-label">Fixed price, includes delivery and taxes</p>
+            </div>
             {!readiness.ready && (
               <p className="small" style={{ margin: 0 }}>
                 <span className="badge sim">SIMULATION</span> Orders are simulated: no money moves and nothing ships.
@@ -47,23 +50,22 @@ export default async function Checkout(props: { params: Promise<{ id: string }> 
             )}
           </div>
         </section>
-        {openOrder ? (
+        {c.openOrder ? (
           <p className="notice ok">
             These bricks are already ordered.{" "}
-            {openOrder.orderCustomerId === cid ? (
-              <Link href={`/orders/${openOrder.orderId}`}>Follow the order</Link>
-            ) : (
-              "The grown-up who ordered them can follow it under My orders."
-            )}
+            {c.openOrder.mine ? <Link href={`/orders/${c.openOrder.id}`}>Follow the order</Link> : "The grown-up who ordered them can follow it under My orders."}
           </p>
-        ) : view.validation.status !== "valid" ? (
+        ) : !c.active ? (
+          <p className="notice">This wish code isn&apos;t active any more. Ask your young inventor to tap &ldquo;Show a grown-up&rdquo; again for a fresh code.</p>
+        ) : !c.digitalCheckPassed ? (
           <p className="notice bad">This creature can&apos;t be ordered right now.</p>
         ) : (
           <>
-            <div className="notice sim small">
-              We freeze this exact creature and its parts list, ask the supplier for a complete quote, and show it to you at the fixed price. Nothing is charged until you accept,
-              and you are only charged after the parts are actually purchased.
-            </div>
+            <ol className="wg-next small">
+              <li>Your delivery details (adult purchaser only).</li>
+              <li>We freeze this exact creature and ask the supplier for a complete quote at the fixed price.</li>
+              <li>You accept the quote. Your payment is held, and charged only after the parts are purchased.</li>
+            </ol>
             <CheckoutForm designId={id} fixedPriceCents={settings.creaturePriceCents} />
           </>
         )}

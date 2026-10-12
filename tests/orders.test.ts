@@ -404,6 +404,44 @@ describe("creature orders through a grown-up wish (fixed price)", () => {
     }
   });
 
+  it("never authorizes or captures more than the fixed price", async () => {
+    const { adult, designId } = await claimedCreature();
+    const orderId = await createOrder(adult, { designId, contact: CONTACT, adultConfirmed: true });
+    await runAll();
+    const { quote } = await getCustomerOrder(adult, orderId);
+    const db = await getDb();
+    // A quote that somehow differs from the fixed price is refused before any authorization.
+    await db.query(`UPDATE quotes SET customer_total_cents = 2500 WHERE id = $1`, [quote!.id]);
+    await expect(acceptQuote(adult, orderId, { quoteId: quote!.id, paymentMethod: "sim_ok" })).rejects.toThrow(/fixed price/);
+    expect((await db.query(`SELECT * FROM payments WHERE order_id = $1`, [orderId])).rows).toHaveLength(0);
+    await db.query(`UPDATE quotes SET customer_total_cents = 2400 WHERE id = $1`, [quote!.id]);
+    await acceptQuote(adult, orderId, { quoteId: quote!.id, paymentMethod: "sim_ok" });
+    // Even if the stored amounts were inflated afterwards, the capture is capped at the fixed price.
+    await db.query(`UPDATE orders SET accepted_total_cents = 9999 WHERE id = $1`, [orderId]);
+    await db.query(`UPDATE payments SET amount_cents = 9999 WHERE order_id = $1`, [orderId]);
+    await runAll();
+    expect(await orderStatus(orderId)).toBe("purchased");
+    const pay = (await db.query<{ status: string; captured_cents: number }>(`SELECT * FROM payments WHERE order_id = $1`, [orderId])).rows;
+    expect(pay).toEqual([expect.objectContaining({ status: "captured", captured_cents: 2400 })]);
+  });
+
+  it("an exception holds the kid stage it came from with 'slow', and a refund sends the kid back to waiting", async () => {
+    const { kid, adult, designId, code } = await claimedCreature();
+    const orderId = await createOrder(adult, { designId, contact: CONTACT, adultConfirmed: true });
+    await runAll();
+    const { quote } = await getCustomerOrder(adult, orderId);
+    await acceptQuote(adult, orderId, { quoteId: quote!.id, paymentMethod: "sim_ok" });
+    await runAll();
+    await fastForward(orderId, "shipped");
+    expect(await kidStatus(kid, code)).toEqual({ stage: "on_the_way", slow: false });
+    const db = await getDb();
+    // Simulate a held order (e.g. a delivery problem the owner is looking at).
+    await db.query(`UPDATE orders SET status = 'exception', held_from_status = 'shipped' WHERE id = $1`, [orderId]);
+    expect(await kidStatus(kid, code)).toEqual({ stage: "on_the_way", slow: true });
+    await db.query(`UPDATE orders SET status = 'refunded', held_from_status = NULL WHERE id = $1`, [orderId]);
+    expect(await kidStatus(kid, code)).toEqual({ stage: "waiting", slow: false });
+  });
+
   it("keeps ready-made kits on estimate-then-quote pricing", async () => {
     const c = cust();
     const designId = await createDesign(c, "cottage");

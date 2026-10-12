@@ -37,7 +37,7 @@ export default function GrownupWish({ code }: { code: string }) {
     }
   }, [code]);
 
-  if (state.kind === "age") return <AgeGate onAdult={load} />;
+  if (state.kind === "age") return <AgeGate onAdult={load} code={code} />;
   if (state.kind === "loading") return <p className="muted wg-loading">Opening the wish...</p>;
   if (state.kind === "inactive") return <InactiveWish />;
   if (state.kind === "error")
@@ -67,11 +67,18 @@ export function InactiveWish() {
   );
 }
 
-function GrownupView({ data }: { data: WishData }) {
+export function GrownupView({ data }: { data: WishData }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const still = useMemo(() => toSvg(renderIso(data.model.parts), { width: 420 }), [data.model.parts]);
+  // The creature sits inside a larger build frame; moving it to the origin lets the
+  // 3D view frame the creature itself instead of empty floor (appearance is unchanged).
+  const viewParts = useMemo(() => {
+    const minX = Math.min(...data.model.parts.map((p) => p.x));
+    const minZ = Math.min(...data.model.parts.map((p) => p.z));
+    return data.model.parts.map((p) => ({ ...p, x: p.x - minX, z: p.z - minZ }));
+  }, [data.model.parts]);
   const note = noteSticker(data.note);
   const orderable = data.validation.digitalCheckPassed && !data.ordered;
   const extras = data.pieces - data.bricks;
@@ -113,7 +120,7 @@ function GrownupView({ data }: { data: WishData }) {
         <div className="wg-col wg-main">
           <section className="panel wg-stage" aria-label="The creature in 3D">
             <div className="viewer wg-viewer">
-              <BrickViewer parts={data.model.parts} />
+              <BrickViewer parts={viewParts} />
               <span className="viewer-hint">Drag to turn it</span>
             </div>
           </section>
@@ -163,6 +170,17 @@ function GrownupView({ data }: { data: WishData }) {
           <section className="panel wg-buy" aria-label="Order">
             <p className="wg-price">{formatCents(data.priceCents)}</p>
             <p className="wg-price-label">Fixed price, includes delivery and taxes</p>
+            <ul className="wg-glance" aria-label="At a glance">
+              <li>
+                <span aria-hidden>🧱</span> {data.pieces} pieces, {data.steps.length} steps
+              </li>
+              <li>
+                <span aria-hidden>🛠️</span> about {data.buildMinutes} min to build
+              </li>
+              <li>
+                <span aria-hidden>⚠️</span> Suitable {data.ageBand}, small parts
+              </li>
+            </ul>
             {data.simulated && (
               <p className="notice sim small wg-sim">
                 <span className="badge sim">SIMULATION</span> Orders are simulated right now: no money moves and nothing ships.
@@ -205,6 +223,7 @@ function GrownupView({ data }: { data: WishData }) {
                 Next: your delivery details and a confirmed supplier quote at this price. Nothing is charged until you accept it.
               </p>
             )}
+            <p className="small wg-promise">One price with no add-ons or in-app purchases. We never ask anything about your child.</p>
           </section>
 
           <div className="wg-card">

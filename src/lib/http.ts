@@ -126,5 +126,10 @@ export function clientIp(h: Headers): string {
 
 /** Throw HTTP 429 when this client IP made more than `limit` requests per `windowMs` in `scope`. */
 export function assertRateLimit(h: Headers, scope: string, limit: number, windowMs = 60_000) {
-  if (!takeToken(`${scope}:${clientIp(h)}`, limit, windowMs)) throw new AppError("rate_limited", "Too many tries. Please wait a minute and try again.", 429);
+  assertRateLimitKey(`${scope}:${clientIp(h)}`, limit, windowMs);
+}
+
+/** Same, for any key (e.g. one anonymous session, so many kids behind one school IP don't share a bucket). */
+export function assertRateLimitKey(key: string, limit: number, windowMs = 60_000) {
+  if (!takeToken(key, limit, windowMs)) throw new AppError("rate_limited", "Too many tries. Please wait a minute and try again.", 429);
 }

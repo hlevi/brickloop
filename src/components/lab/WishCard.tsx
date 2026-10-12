@@ -8,11 +8,11 @@
  * sticker choice and a calm status line that polls GET /api/wishes/[code]/status.
  * It must never show money, ask for personal data or contain free-text inputs.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { backdropFor } from "@/lib/creature/worlds";
 import { renderIso, toSvg } from "@/lib/instructions/iso";
 import type { KidStage, KidStatus, KidWish } from "@/lib/wishes";
-import { NOTE_STICKERS, type NoteId } from "@/components/wish/notes";
+import { NOTE_STICKERS, noteSticker, type NoteId } from "@/components/wish/notes";
 import "@/components/wish/wish-card.css";
 
 export interface WishCardProps {
@@ -33,9 +33,24 @@ export const STAGE_TEXT: Record<KidStage, { icon: string; text: string }> = {
   arrived: { icon: "🏠", text: "It's here!" },
 };
 
+/** The journey a wish takes once a grown-up orders it (no dates, no countdowns). */
+const JOURNEY: { stage: KidStage; label: string }[] = [
+  { stage: "ordered", label: "Ordered" },
+  { stage: "gathering", label: "Gathering" },
+  { stage: "packing", label: "Packing" },
+  { stage: "on_the_way", label: "On its way" },
+  { stage: "arrived", label: "Here!" },
+];
+
+function titleFor(stage: KidStage): string {
+  if (stage === "waiting" || stage === "seen") return "Show a grown-up!";
+  if (stage === "arrived") return "It's here! Time to build!";
+  return "Your wish is coming true!";
+}
+
 export default function WishCard({ designId, onClose }: WishCardProps) {
   const [wish, setWish] = useState<KidWish | null>(null);
-  const [note, setNote] = useState<NoteId>("invented");
+  const [note, setNote] = useState<NoteId | null>(null);
   const [status, setStatus] = useState<KidStatus>({ stage: "waiting", slow: false });
   const [failed, setFailed] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
@@ -43,9 +58,10 @@ export default function WishCard({ designId, onClose }: WishCardProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const noteChain = useRef<Promise<unknown>>(Promise.resolve());
 
+  /** Without a note: open the wish for the creature on screen, keeping the sticker picked before. */
   const makeWish = useCallback(
-    async (n: NoteId) => {
-      const r = await fetch(`/api/designs/${designId}/wish`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: n }) });
+    async (n?: NoteId) => {
+      const r = await fetch(`/api/designs/${designId}/wish`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(n ? { note: n } : {}) });
       if (!r.ok) throw new Error(String(r.status));
       const w = (await r.json()) as KidWish;
       setWish(w);
@@ -57,7 +73,12 @@ export default function WishCard({ designId, onClose }: WishCardProps) {
 
   const start = useCallback(() => {
     setFailed(false);
-    makeWish("invented").catch(() => setFailed(true));
+    // Sticker taps made while the card is opening wait for it (same promise chain).
+    noteChain.current = noteChain.current.then(() =>
+      makeWish()
+        .then((w) => setNote((picked) => picked ?? w.note))
+        .catch(() => setFailed(true)),
+    );
   }, [makeWish]);
 
   // Create (or reuse) the wish when the card opens.
@@ -128,20 +149,45 @@ export default function WishCard({ designId, onClose }: WishCardProps) {
     };
   }, [code]);
 
+  // One gentle confetti burst when the bricks arrive while the card is open.
+  const [burst, setBurst] = useState(0);
+  const prevStage = useRef<KidStage | null>(null);
+  useEffect(() => {
+    if (status.stage === "arrived" && prevStage.current && prevStage.current !== "arrived") setBurst((b) => b + 1);
+    prevStage.current = status.stage;
+  }, [status.stage]);
+
   const pickNote = (n: NoteId) => {
     if (n === note) return;
     setNote(n);
     // Same revision, same code: the server only swaps the sticker. Serialize taps.
-    noteChain.current = noteChain.current.then(() => makeWish(n).catch(() => undefined));
+    noteChain.current = noteChain.current.then(() =>
+      makeWish(n)
+        .then((w) => {
+          // A grown-up ordered meanwhile: show the sticker they saw.
+          if (w.note !== n) setNote(w.note);
+        })
+        .catch(() => undefined),
+    );
   };
 
   const art = useMemo(() => (wish ? toSvg(renderIso(wish.parts), { width: 360 }) : ""), [wish]);
   const [bgA, bgB] = backdropFor(wish?.colors ?? {});
   const st = STAGE_TEXT[status.stage];
   const ordered = status.stage !== "waiting" && status.stage !== "seen";
+  const at = JOURNEY.findIndex((j) => j.stage === status.stage);
 
   return (
-    <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="wk-title" className="wk" style={{ background: `linear-gradient(160deg, ${bgA}, ${bgB})` }}>
+    <div
+      ref={dialogRef}
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="wk-title"
+      className={`wk wk-${status.stage}`}
+      style={{ background: `linear-gradient(160deg, ${bgA}, ${bgB})` }}
+    >
+      <div className="wk-dots" aria-hidden />
       <div className="wk-inner">
         <div className="wk-top">
           <button className="wk-close" onClick={onClose}>
@@ -151,7 +197,7 @@ export default function WishCard({ designId, onClose }: WishCardProps) {
 
         <div className="wk-main">
           <h1 id="wk-title" className="wk-title">
-            Show a grown-up!
+            {titleFor(status.stage)}
           </h1>
 
           <div className="wk-body">
@@ -165,7 +211,7 @@ export default function WishCard({ designId, onClose }: WishCardProps) {
               )}
             </section>
 
-            <section className="wk-wish" aria-label="Wish code">
+            <section className="wk-wish" aria-label={ordered ? "Your wish" : "Wish code"}>
               {failed ? (
                 <div className="wk-code-box wk-retry">
                   <p className="wk-hint">Let&apos;s try that again.</p>
@@ -173,6 +219,17 @@ export default function WishCard({ designId, onClose }: WishCardProps) {
                     <span aria-hidden>🔁</span> Try again
                   </button>
                 </div>
+              ) : ordered ? (
+                <ol className="wk-journey" aria-label="Where your bricks are">
+                  {JOURNEY.map((j, i) => (
+                    <li key={j.stage} className={i < at ? "done" : i === at ? "now" : "next"} aria-current={i === at ? "step" : undefined}>
+                      <span className="wk-journey-dot" aria-hidden>
+                        {STAGE_TEXT[j.stage].icon}
+                      </span>
+                      <span className="wk-journey-label">{j.label}</span>
+                    </li>
+                  ))}
+                </ol>
               ) : (
                 <div className="wk-code-box">
                   <div className="wk-qr" aria-hidden={!qr}>
@@ -184,13 +241,7 @@ export default function WishCard({ designId, onClose }: WishCardProps) {
                   </div>
                   <div className="wk-code-side">
                     <p className="wk-hint">
-                      {ordered ? (
-                        "Your wish code"
-                      ) : (
-                        <>
-                          <span aria-hidden>📱</span> A grown-up can scan this
-                        </>
-                      )}
+                      <span aria-hidden>📱</span> A grown-up can scan this
                     </p>
                     <p className="wk-code" aria-label={code ? `Wish code ${code.split("").join(" ")}` : "Making your wish code"}>
                       {code ?? "····-····"}
@@ -201,7 +252,7 @@ export default function WishCard({ designId, onClose }: WishCardProps) {
               )}
 
               <div className="wk-status" role="status" aria-live="polite">
-                <span className="wk-status-icon" aria-hidden>
+                <span key={status.stage} className="wk-status-icon" aria-hidden>
                   {st.icon}
                 </span>
                 <span>
@@ -212,21 +263,79 @@ export default function WishCard({ designId, onClose }: WishCardProps) {
             </section>
           </div>
 
-          <section className="wk-notes" aria-label="Add a sticker">
-            <p className="wk-notes-title">Add a sticker</p>
-            <div className="wk-note-row">
-              {NOTE_STICKERS.map((n) => (
-                <button key={n.id} className="wk-note" aria-pressed={note === n.id} onClick={() => pickNote(n.id)}>
-                  <span className="wk-note-icon" aria-hidden>
-                    {n.icon}
+          {ordered ? (
+            // Once the bricks are ordered, the sticker the grown-up saw stays put.
+            note && (
+              <section className="wk-notes" aria-label="Your sticker">
+                <p className="wk-notes-title">Your sticker</p>
+                <div className="wk-note-row is-kept">
+                  <span className="wk-note">
+                    <span className="wk-note-icon" aria-hidden>
+                      {noteSticker(note).icon}
+                    </span>
+                    <span>{noteSticker(note).label}</span>
                   </span>
-                  <span>{n.label}</span>
-                </button>
-              ))}
-            </div>
-          </section>
+                </div>
+              </section>
+            )
+          ) : (
+            <section className="wk-notes" aria-label="Add a sticker">
+              <p className="wk-notes-title">Add a sticker</p>
+              <div className="wk-note-row">
+                {NOTE_STICKERS.map((n) => (
+                  <button key={n.id} className="wk-note" aria-pressed={note === n.id} onClick={() => pickNote(n.id)}>
+                    <span className="wk-note-icon" aria-hidden>
+                      {n.icon}
+                    </span>
+                    <span>{n.label}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </div>
+      <WishConfetti burst={burst} />
+    </div>
+  );
+}
+
+const CONFETTI_COLORS = ["#ffd23f", "#ff6b6b", "#4ecdc4", "#6a8dff", "#b45cff", "#7ed957", "#ff9f1c"];
+
+/** A short CSS confetti fall; hidden entirely with prefers-reduced-motion (see wish-card.css). */
+function WishConfetti({ burst }: { burst: number }) {
+  const [on, setOn] = useState(0);
+  useEffect(() => {
+    if (!burst) return;
+    const show = window.setTimeout(() => setOn(burst), 0);
+    const hide = window.setTimeout(() => setOn(0), 2600);
+    return () => {
+      window.clearTimeout(show);
+      window.clearTimeout(hide);
+    };
+  }, [burst]);
+  const pieces = useMemo(
+    () =>
+      Array.from({ length: 42 }, (_, i) => ({
+        left: (i * 37) % 100,
+        delay: ((i * 13) % 10) / 14,
+        drift: ((i * 29) % 21) - 10,
+        spin: ((i * 53) % 7) - 3,
+        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+        round: i % 4 === 0,
+      })),
+    [],
+  );
+  if (!on) return null;
+  return (
+    <div key={on} className="wk-confetti" aria-hidden>
+      {pieces.map((p, i) => (
+        <i
+          key={i}
+          className={p.round ? "round" : undefined}
+          style={{ left: `${p.left}%`, background: p.color, animationDelay: `${p.delay}s`, "--drift": `${p.drift}vw`, "--spin": `${p.spin}turn` } as CSSProperties}
+        />
+      ))}
     </div>
   );
 }

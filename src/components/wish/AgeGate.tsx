@@ -9,7 +9,7 @@ import { birthYearOptions, isAdultBirthYear } from "./age";
  * no request, no cookie, no storage. Under 18 ends here with no way back except a
  * fresh page load (which asks again, still storing nothing).
  */
-export default function AgeGate({ onAdult }: { onAdult: () => void }) {
+export default function AgeGate({ onAdult, code }: { onAdult: () => void; code?: string }) {
   const id = useId();
   const [year, setYear] = useState("");
   const [minor, setMinor] = useState(false);
@@ -36,6 +36,10 @@ export default function AgeGate({ onAdult }: { onAdult: () => void }) {
         else setMinor(true);
       }}
     >
+      <div className="wg-gate-icon" aria-hidden>
+        ✉️
+      </div>
+      <p className="wg-gate-lead">You opened a creature wish{code ? <> &middot; code {code}</> : null}</p>
       <h1>
         <label htmlFor={id}>What year were you born?</label>
       </h1>
