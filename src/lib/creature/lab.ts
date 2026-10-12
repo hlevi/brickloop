@@ -30,10 +30,13 @@ export interface LabTab {
   lockable: boolean;
 }
 
+/** Kid-friendlier tab pictures where the kit's own icon reads oddly (the kit uses 🫃 for Body). */
+const TAB_ICON_OVERRIDES: Record<string, string> = { body: "🧸" };
+
 /** Body, Legs, Head, Eyes, Tail, Back, Top (from the kit), then Colors, Power, Name. */
 export function labTabs(kit: Pick<KitDef, "options">): LabTab[] {
   return [
-    ...kit.options.map((o) => ({ id: o.id, kind: "slot" as const, label: o.tab?.label ?? o.label, icon: o.tab?.icon ?? "🧩", lockable: true })),
+    ...kit.options.map((o) => ({ id: o.id, kind: "slot" as const, label: o.tab?.label ?? o.label, icon: TAB_ICON_OVERRIDES[o.id] ?? o.tab?.icon ?? "🧩", lockable: true })),
     { id: COLORS_LOCK, kind: "colors", label: "Colors", icon: "🎨", lockable: true },
     { id: "power", kind: "power", label: "Power", icon: "⚡", lockable: false },
     { id: "name", kind: "name", label: "Name", icon: "🏷️", lockable: false },

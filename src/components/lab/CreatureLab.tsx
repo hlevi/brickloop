@@ -156,13 +156,18 @@ export default function CreatureLab({ designId, initial, isNew = false, initialT
   const [wish, setWish] = useState<"closed" | "opening" | "open">("closed");
   const [muted, setMuted] = useState(false);
   const [starting, setStarting] = useState(false);
-  const timers = useRef<number[]>([]);
+  // Short timers for sounds and pop-ups; any still pending are cleared when the Lab closes.
+  const timers = useRef(new Set<number>());
   const later = useCallback((fn: () => void, ms: number) => {
-    timers.current.push(window.setTimeout(fn, ms));
+    const id = window.setTimeout(() => {
+      timers.current.delete(id);
+      fn();
+    }, ms);
+    timers.current.add(id);
   }, []);
   useEffect(() => {
-    const t = timers.current;
-    return () => t.forEach((id) => window.clearTimeout(id));
+    const pending = timers.current;
+    return () => pending.forEach((id) => window.clearTimeout(id));
   }, []);
 
   const model = useMemo(() => labModel(params), [params]);
