@@ -31,11 +31,22 @@ export interface ComponentDef {
   allowedColors: ColorId[];
 }
 
+/**
+ * Creature identity chosen from curated word lists (indices only; never free text).
+ * name = [title, word, ending], builder = [adjective, animal, number index].
+ */
+export interface CreatureIdentity {
+  name: [number, number, number];
+  builder: [number, number, number];
+}
+
 /** Bounded customization: a color per component and a value per option. */
 export interface DesignParams {
   template: TemplateId;
   colors: Record<string, ColorId>;
   options: Record<string, string>;
+  /** Lab kits only. Not part of the structural key. */
+  identity?: CreatureIdentity;
 }
 
 /** The authoritative model. Preview, BOM and instructions all derive from this. */

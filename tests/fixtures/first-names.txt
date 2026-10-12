@@ -1,0 +1,21 @@
+# Common real first names; generated creature names and tags must not be just a real name.
+olivia
+emma
+liam
+noah
+ava
+mia
+sophia
+lucas
+ethan
+mason
+amelia
+harper
+leo
+max
+oscar
+ruby
+lily
+jack
+zoe
+chloe

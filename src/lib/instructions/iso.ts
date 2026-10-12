@@ -207,8 +207,8 @@ export function renderIso(allParts: PlacedPart[], opts: RenderOptions = {}): Ren
     const def = getPart(p.partId);
     const fp = footprint(p);
     if (def.shape === "round") {
-      const cx = p.x + 0.5, cz = p.z + 0.5;
-      const r = 0.45;
+      const cx = p.x + fp.W / 2, cz = p.z + fp.D / 2;
+      const r = fp.W / 2 - 0.05;
       const ring = (yy: number) => {
         const pts: Pt[] = [];
         for (let i = 0; i < 20; i++) {
@@ -222,7 +222,7 @@ export function renderIso(allParts: PlacedPart[], opts: RenderOptions = {}): Ren
       outline(convexHull([...b, ...t]), c.edge, c.edgeW);
       poly(t, c.top, c.opacity);
       outline(t, c.edge, c.edgeW);
-      drawStud(cx, (p.y + fp.H) * PLATE_H, cz, c);
+      for (let i = 0; i < fp.W; i++) for (let j = 0; j < fp.D; j++) drawStud(p.x + i + 0.5, (p.y + fp.H) * PLATE_H, p.z + j + 0.5, c);
       return;
     }
     // Wheel: axis along z, circle in the x-y plane.

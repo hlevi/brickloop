@@ -29,6 +29,9 @@ export const COLORS: Record<string, ColorDef> = {
   "dark-green": { id: "dark-green", name: "Dark Green", hex: "#184632", bricklinkColorId: 80 },
   "bright-pink": { id: "bright-pink", name: "Bright Pink", hex: "#E4ADC8", bricklinkColorId: 104 },
   "trans-clear": { id: "trans-clear", name: "Trans-Clear", hex: "#DDEEFF", transparent: true, bricklinkColorId: 12 },
+  "trans-red": { id: "trans-red", name: "Trans-Red", hex: "#E0304A", transparent: true, bricklinkColorId: 17 },
+  "trans-yellow": { id: "trans-yellow", name: "Trans-Yellow", hex: "#F5D23A", transparent: true, bricklinkColorId: 19 },
+  "trans-green": { id: "trans-green", name: "Trans-Green", hex: "#3FB25F", transparent: true, bricklinkColorId: 20 },
   "trans-light-blue": { id: "trans-light-blue", name: "Trans-Light Blue", hex: "#AEEFEC", transparent: true, bricklinkColorId: 15 },
 };
 

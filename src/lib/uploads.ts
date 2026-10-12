@@ -5,6 +5,7 @@ import { getDb } from "./db";
 import { audit } from "./audit";
 import { env } from "./config";
 import { AppError, isUuid, uuid } from "./util";
+import { isLabKit } from "./model/templates";
 
 const SIGNATURES: { mime: string; ext: string; test: (b: Buffer) => boolean }[] = [
   { mime: "image/png", ext: "png", test: (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
@@ -31,8 +32,9 @@ export async function saveUpload(customerId: string, designId: string, originalN
   const kind = sniffImage(buf);
   if (!kind) throw new AppError("bad_type", "Only PNG, JPEG or WebP images are accepted", 415);
   const db = await getDb();
-  const own = await db.query(`SELECT 1 FROM designs WHERE id = $1 AND customer_id = $2`, [designId, customerId]);
-  if (!own.rows[0]) throw new AppError("not_found", "Design not found", 404);
+  const own = await db.query<{ template: string }>(`SELECT template FROM designs WHERE id = $1 AND customer_id = $2`, [designId, customerId]);
+  // Kid-mode (Lab) designs never accept photos.
+  if (!own.rows[0] || isLabKit(own.rows[0].template)) throw new AppError("not_found", "Design not found", 404);
   const count = await db.query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM uploads WHERE design_id = $1`, [designId]);
   if (Number(count.rows[0].n) >= MAX_PER_DESIGN) throw new AppError("too_many", `At most ${MAX_PER_DESIGN} images per design`, 409);
   const id = uuid();

@@ -6,7 +6,9 @@ import { env } from "./config";
 import { planWithLlm, type ChatTurn } from "./edit/llm";
 import { planFromMessage, type ChatPlan } from "./edit/mockChat";
 import { applyTool, type ToolCall } from "./edit/tools";
-import { buildModel, defaultParams, getKit, TEMPLATES } from "./model/templates";
+import { buildModel, defaultParams, getKit, isLabKit, TEMPLATES } from "./model/templates";
+import { renderName } from "./creature/words";
+import { creatureStats, type CreatureStats } from "./creature/stats";
 import type { DesignModel, DesignParams, TemplateId } from "./model/types";
 import { estimatePrice, type PriceEstimate } from "./pricing/estimate";
 import { log } from "./redact";
@@ -24,6 +26,9 @@ export interface DesignView {
   validation: ValidationResult;
   bom: ReturnType<typeof computeBom>;
   estimate: PriceEstimate;
+  /** Lab kits only. */
+  lab: boolean;
+  stats: CreatureStats | null;
 }
 
 interface DesignRow {
@@ -74,12 +79,13 @@ async function insertRevision(q: Queryable, designId: string, params: DesignPara
 }
 
 export async function createDesign(customerId: string, template: TemplateId, name?: string): Promise<string> {
-  if (!TEMPLATES.some((t) => t.id === template)) throw new AppError("invalid_template", "Unknown template");
+  if (!TEMPLATES.some((t) => t.id === template) && !isLabKit(template)) throw new AppError("invalid_template", "Unknown template");
   const db = await getDb();
   return db.tx(async (q) => {
     await ensureCustomer(q, customerId);
     const id = uuid();
-    const title = (name ?? TEMPLATES.find((t) => t.id === template)!.name).slice(0, 80);
+    // Lab kits never accept a free-text name; they are named from word reels.
+    const title = (isLabKit(template) ? getKit(template).name : (name ?? TEMPLATES.find((t) => t.id === template)!.name)).slice(0, 80);
     await q.query(`INSERT INTO designs(id, customer_id, template, name) VALUES ($1,$2,$3,$4)`, [id, customerId, template, title]);
     await insertRevision(q, id, defaultParams(template), "template", "Started from template", null);
     await audit(q, `customer:${customerId}`, "design.create", "design", id, { template });
@@ -104,6 +110,8 @@ export async function getDesignView(customerId: string, designId: string, q?: Qu
     validation: r.validation,
     bom,
     estimate: estimatePrice(bom),
+    lab: isLabKit(d.template),
+    stats: isLabKit(d.template) ? creatureStats(r.model) : null,
   };
 }
 
@@ -121,7 +129,8 @@ export async function renameDesign(customerId: string, designId: string, name: s
   const clean = name.trim().slice(0, 80);
   if (!clean) throw new AppError("invalid_name", "Name is required");
   const db = await getDb();
-  await loadOwned(db, customerId, designId);
+  const d = await loadOwned(db, customerId, designId);
+  if (isLabKit(d.template)) throw new AppError("not_found", "Not found", 404);
   await db.query(`UPDATE designs SET name = $2, updated_at = now() WHERE id = $1`, [designId, clean]);
 }
 
@@ -148,6 +157,7 @@ export async function applyEdits(customerId: string, designId: string, calls: To
     }
     if (applied.length) {
       await insertRevision(q, designId, params, source, applied.join("; "), d.current_revision_id);
+      if (isLabKit(d.template) && params.identity) await q.query(`UPDATE designs SET name = $2 WHERE id = $1`, [designId, renderName(params.identity)]);
       await audit(q, `customer:${customerId}`, "design.edit", "design", designId, { source, applied, rejected });
     }
     return { applied, rejected };
@@ -162,6 +172,10 @@ export async function undo(customerId: string, designId: string) {
     const parent = rows[0]?.parent_revision_id;
     if (!parent) throw new AppError("nothing_to_undo", "Nothing to undo", 409);
     await q.query(`UPDATE designs SET current_revision_id = $2, updated_at = now() WHERE id = $1`, [designId, parent]);
+    if (isLabKit(d.template)) {
+      const pr = await q.query<{ params: DesignParams }>(`SELECT params FROM design_revisions WHERE id = $1`, [parent]);
+      await q.query(`UPDATE designs SET name = $2 WHERE id = $1`, [designId, pr.rows[0]?.params.identity ? renderName(pr.rows[0].params.identity) : getKit(d.template).name]);
+    }
   });
 }
 
@@ -185,6 +199,7 @@ export async function chat(customerId: string, designId: string, message: string
   if (!text) throw new AppError("empty_message", "Message is empty");
   const db = await getDb();
   const view = await getDesignView(customerId, designId);
+  if (view.lab) throw new AppError("not_found", "Not found", 404);
   const historyRows = await db.query<{ role: "user" | "assistant"; content: string }>(
     `SELECT role, content FROM design_messages WHERE design_id = $1 ORDER BY id DESC LIMIT 10`,
     [designId],
@@ -233,7 +248,8 @@ export async function chat(customerId: string, designId: string, message: string
 
 export async function chatHistory(customerId: string, designId: string) {
   const db = await getDb();
-  await loadOwned(db, customerId, designId);
+  const d = await loadOwned(db, customerId, designId);
+  if (isLabKit(d.template)) throw new AppError("not_found", "Not found", 404);
   const { rows } = await db.query<{ role: string; content: string; mode: string; created_at: string }>(
     `SELECT role, content, mode, created_at FROM design_messages WHERE design_id = $1 ORDER BY id ASC LIMIT 200`,
     [designId],
@@ -244,6 +260,8 @@ export async function chatHistory(customerId: string, designId: string) {
 /** Price-aware suggestions: supported edits that bring the estimate under a budget. */
 export async function budgetSuggestions(customerId: string, designId: string, budgetCents: number) {
   const view = await getDesignView(customerId, designId);
+  // Lab kits have thousands of combinations and a fixed price: no suggestions.
+  if (view.lab) return { currentCents: view.estimate.totalCents, budgetCents, withinBudget: true, suggestions: [] as { label: string; calls: ToolCall[]; estimateCents: number }[] };
   const lookup = await loadMappingLookup();
   // Every combination of build options (colors don't change price meaningfully).
   const kit = getKit(view.params.template);

@@ -1,5 +1,5 @@
 import { renderIso, toSvg } from "@/lib/instructions/iso";
-import { buildModel, defaultParams, KITS } from "@/lib/model/templates";
+import { buildModel, defaultParams, READY_MADE_KITS as KITS } from "@/lib/model/templates";
 import { computeBom } from "@/lib/bom/bom";
 import { estimatePrice } from "@/lib/pricing/estimate";
 import { getSettings } from "@/lib/settings";

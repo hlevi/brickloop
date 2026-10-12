@@ -1,8 +1,9 @@
 import { COLORS, isColorId } from "../catalog/colors";
 import { getKit } from "../model/templates";
+import { isValidIdentity, renderBuilder, renderName } from "../creature/words";
 import type { DesignParams, TemplateId } from "../model/types";
 
-export type ToolName = "set_color" | "set_option";
+export type ToolName = "set_color" | "set_option" | "set_identity";
 
 export interface ToolCall {
   name: string;
@@ -73,6 +74,14 @@ export function applyTool(params: DesignParams, call: ToolCall): ToolResult {
     if (!val) return { ok: false, error: `${opt.label} must be one of: ${opt.values.map((v) => v.label).join(", ")}.` };
     next.options[opt.id] = val.id;
     return { ok: true, params: next, summary: `${opt.label.toLowerCase()} set to ${val.label}` };
+  }
+  if (call.name === "set_identity") {
+    // Lab kits only; indices into curated word lists. Never offered to the LLM.
+    if (!kit.lab) return { ok: false, error: "Names can only be picked in the Creature Lab." };
+    const identity = { name: input.name, builder: input.builder };
+    if (!isValidIdentity(identity)) return { ok: false, error: "Pick a name from the reels." };
+    next.identity = { name: [...identity.name] as [number, number, number], builder: [...identity.builder] as [number, number, number] };
+    return { ok: true, params: next, summary: `named ${renderName(next.identity)} by ${renderBuilder(next.identity)}` };
   }
   return { ok: false, error: `Unknown edit "${call.name}".` };
 }

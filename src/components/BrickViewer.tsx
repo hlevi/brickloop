@@ -61,9 +61,10 @@ function localGeometry(partId: string): THREE.BufferGeometry {
     parts.push(g.toNonIndexed());
     if (def.topStuds === "back-row") parts.push(...studs(allCells.filter(([, z]) => z === def.d - 1), H));
   } else if (def.shape === "round") {
-    const g = new THREE.CylinderGeometry(0.45, 0.45, H - GAP, 20);
-    g.translate(0.5, H / 2, 0.5);
-    parts.push(g, ...studs([[0, 0]], H));
+    const r = def.w / 2 - 0.05;
+    const g = new THREE.CylinderGeometry(r, r, H - GAP, 24);
+    g.translate(def.w / 2, H / 2, def.d / 2);
+    parts.push(g, ...studs(allCells, H));
   } else if (def.shape === "wheel") {
     const r = H / 2;
     const g = new THREE.CylinderGeometry(r, r, 0.7, 24);
