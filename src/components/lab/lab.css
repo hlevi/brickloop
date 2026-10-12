@@ -218,7 +218,7 @@
 .lab-pops {
   position: absolute;
   left: 50%;
-  top: 22%;
+  top: max(22%, 104px);
   z-index: 2;
   display: flex;
   flex-direction: column;
@@ -383,6 +383,10 @@
   opacity: 0.7;
 }
 @container (max-width: 420px) {
+  .lab-pop {
+    font-size: 0.95rem;
+    padding: 3px 12px;
+  }
   .lab-life {
     font-size: 1.12rem;
     padding: 0 18px;
@@ -532,6 +536,54 @@
   .lab-card-scene {
     max-width: 250px;
   }
+}
+
+/* Phones: after "Bring it to life!" the card pops up over the screen and flips. */
+.lab-cardpop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(24, 22, 40, 0.55);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  animation: lab-fade-in 0.25s ease-out;
+}
+.lab-cardpop-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: min(360px, 100%);
+}
+.lab-cardpop .lab-card-scene {
+  width: min(300px, 82vw, calc((100dvh - 250px) * 63 / 88));
+  max-width: none;
+}
+.lab-cardpop .lab-real {
+  padding: 8px 16px;
+  border: 3px solid var(--lab-ink);
+  border-radius: 18px;
+  background: #fff;
+  color: var(--lab-ink);
+}
+.lab-cardpop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+.lab-cardpop-actions > * {
+  flex: 1 1 200px;
+  min-height: 56px;
+  white-space: nowrap;
+}
+.lab-cardpop-actions .lab-grownup {
+  width: auto;
+  font-size: 1.1rem;
 }
 
 /* While the creature builds itself, everything else steps back. */
@@ -836,6 +888,7 @@
   background: linear-gradient(180deg, #e9e2cf 0%, #fff 30%, #fff 70%, #e9e2cf 100%);
   box-shadow: 0 3px 0 var(--lab-ink);
   touch-action: none;
+  container-type: inline-size;
 }
 .lab-reel::before,
 .lab-reel::after {
@@ -868,7 +921,8 @@
 .lab-reel-word {
   max-width: 100%;
   padding: 0 2px;
-  font-size: 1.3rem;
+  /* Long words ("Professor") shrink to fit narrow phone reels; short ones stay big. */
+  font-size: min(1.3rem, calc(100cqi / (var(--len, 6) * 0.64)));
   font-weight: 900;
   line-height: 1.3;
   overflow: hidden;
@@ -939,11 +993,8 @@
   background: #e3ebff;
 }
 @media (max-width: 599px) {
-  .lab-reel-word {
-    font-size: 1.05rem;
-  }
   .lab-reel-ghost {
-    font-size: 0.7rem;
+    font-size: min(0.7rem, 12cqi);
   }
   .lab-dice {
     flex-basis: 64px;
@@ -957,6 +1008,14 @@
   .lab-chip {
     padding: 0 12px;
     font-size: 0.88rem;
+  }
+  .lab-chip.more {
+    width: 52px;
+    padding: 0;
+    font-size: 1.2rem;
+  }
+  .lab-chip-more-label {
+    display: none;
   }
 }
 

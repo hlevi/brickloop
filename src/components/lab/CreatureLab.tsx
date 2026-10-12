@@ -130,7 +130,6 @@ export default function CreatureLab({ designId, initial, isNew = false, initialT
   const rootRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
   useFitToScreen(rootRef, dockRef);
 
   const [params, setParams] = useState<DesignParams>(initial.params);
@@ -148,6 +147,8 @@ export default function CreatureLab({ designId, initial, isNew = false, initialT
   const [caption, setCaption] = useState<{ n: number; total: number; title: string } | null>(null);
   const [celebrate, setCelebrate] = useState(0);
   const [flip, setFlip] = useState(0);
+  const [cardPop, setCardPop] = useState(0);
+  const [cardPopOpen, setCardPopOpen] = useState(false);
   const [prevStats, setPrevStats] = useState<CreatureStats | null>(null);
   const [pulse, setPulse] = useState(0);
   const [pops, setPops] = useState<{ key: number; items: StatChange[] } | null>(null);
@@ -344,20 +345,29 @@ export default function CreatureLab({ designId, initial, isNew = false, initialT
     setCaption(null);
     setCelebrate((n) => n + 1);
     play("tada");
-    if (matches(FIT_QUERY) || !cardRef.current) {
-      setFlip((n) => n + 1);
-      return;
-    }
-    // Phones: the card is below the stage. Glide down to it after the hop, then flip it.
-    const reduce = matches("(prefers-reduced-motion: reduce)");
+    setFlip((n) => n + 1);
+    if (matches(FIT_QUERY)) return;
+    // Phones: the card lives below the stage, so after the hop it pops up over the screen and flips.
     later(
       () => {
-        cardRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
-        later(() => setFlip((n) => n + 1), reduce ? 0 : 450);
+        setCardPop((n) => n + 1);
+        setCardPopOpen(true);
       },
-      reduce ? 0 : 650,
+      matches("(prefers-reduced-motion: reduce)") ? 0 : 650,
     );
   }, [later]);
+
+  const keepBuildingRef = useRef<HTMLButtonElement>(null);
+  const closeCardPop = useCallback(() => setCardPopOpen(false), []);
+  useEffect(() => {
+    if (!cardPopOpen) return;
+    keepBuildingRef.current?.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeCardPop();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cardPopOpen, closeCardPop]);
 
   const steps = model.steps;
   const onPartRevealed = useCallback(
@@ -459,7 +469,7 @@ export default function CreatureLab({ designId, initial, isNew = false, initialT
         </section>
 
         <aside className="lab-side" aria-label="Creature card">
-          <div className="lab-card-scene" ref={cardRef}>
+          <div className="lab-card-scene">
             <div key={flip} className={`lab-card-flip${flip ? " flip" : ""}`}>
               <CreatureCard name={name} builder={builder} stats={stats} parts={model.parts} coreColor={params.colors.core} previous={prevStats} pulseKey={pulse} />
               <div className="lab-card-back" aria-hidden>
@@ -487,6 +497,46 @@ export default function CreatureLab({ designId, initial, isNew = false, initialT
           <TabBar tabs={tabs} active={active.id} locks={locks} onPick={openTab} />
         </nav>
       </div>
+
+      {cardPopOpen && (
+        <div
+          className="lab-cardpop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${name}'s card`}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeCardPop();
+          }}
+        >
+          <div className="lab-cardpop-inner">
+            <div className="lab-card-scene">
+              <div key={cardPop} className="lab-card-flip flip">
+                <CreatureCard name={name} builder={builder} stats={stats} parts={model.parts} coreColor={params.colors.core} />
+                <div className="lab-card-back" aria-hidden>
+                  <span>🧱</span>
+                </div>
+              </div>
+            </div>
+            <p className="lab-real">
+              These <b>{stats.pieces}</b> real bricks can come to your house.
+            </p>
+            <div className="lab-cardpop-actions">
+              <button ref={keepBuildingRef} className="lab-btn" onClick={closeCardPop}>
+                <span aria-hidden>👍</span> Keep building
+              </button>
+              <button
+                className="lab-grownup"
+                onClick={() => {
+                  closeCardPop();
+                  void showGrownup();
+                }}
+              >
+                <span aria-hidden>🙋</span> Show a grown-up
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {wish === "open" && <WishCard designId={designId} onClose={() => setWish("closed")} />}
     </div>

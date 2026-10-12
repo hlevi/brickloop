@@ -30,9 +30,13 @@ export interface TileJob {
 type IdleHandle = number;
 type Deadline = { didTimeout: boolean; timeRemaining(): number };
 
-function whenIdle(cb: (d?: Deadline) => void, timeout?: number): IdleHandle {
-  if (typeof window.requestIdleCallback === "function") return window.requestIdleCallback(cb, timeout ? { timeout } : undefined);
-  return window.setTimeout(() => cb(), timeout ? 16 : 200);
+function whenIdle(cb: (d?: Deadline) => void, timeout: number): IdleHandle {
+  if (typeof window.requestIdleCallback === "function") return window.requestIdleCallback(cb, { timeout });
+  return window.setTimeout(() => cb(), Math.min(timeout, 200));
+}
+function cancelIdle(h: IdleHandle) {
+  if (typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(h);
+  else window.clearTimeout(h);
 }
 
 export function renderTileUrl(params: DesignParams): string {
@@ -49,16 +53,21 @@ const CHUNK_MS = 30;
 const listeners = new Set<() => void>();
 let nowLane: TileJob[] = [];
 let laterLane: TileJob[] = [];
-let scheduled = false;
+let pending: { handle: IdleHandle; urgent: boolean } | null = null;
 
 function schedule() {
-  if (scheduled || (!nowLane.length && !laterLane.length)) return;
-  scheduled = true;
-  whenIdle(run, nowLane.length ? 100 : undefined);
+  const urgent = nowLane.length > 0;
+  if (!urgent && !laterLane.length) return;
+  if (pending) {
+    // An open tab's pictures never wait behind a background warm-up.
+    if (pending.urgent || !urgent) return;
+    cancelIdle(pending.handle);
+  }
+  pending = { handle: whenIdle(run, urgent ? 100 : 1500), urgent };
 }
 
 function run(deadline?: Deadline) {
-  scheduled = false;
+  pending = null;
   const start = performance.now();
   let did = 0;
   for (;;) {

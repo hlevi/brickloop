@@ -262,7 +262,7 @@ function Reel({ words, index, label, onSpin, disabled }: { words: readonly strin
       <span className="lab-reel-ghost" aria-hidden>
         {words[spinIndex(index, -1, n)]}
       </span>
-      <span key={index} className={`lab-reel-word ${dir}`}>
+      <span key={index} className={`lab-reel-word ${dir}`} style={{ "--len": Math.max(4, words[index].length) } as CSSProperties}>
         {words[index]}
       </span>
       <span className="lab-reel-ghost" aria-hidden>
@@ -359,7 +359,8 @@ export function NamePanel({ designId, params, act, disabled, reducedMotion }: { 
             setChoices(builderChoices(identity.builder, seededRng(seedBase + 1 + r * 7919)));
           }}
         >
-          <span aria-hidden>🔄</span> More
+          <span aria-hidden>🔄</span>
+          <span className="lab-chip-more-label"> More</span>
         </button>
       </div>
     </div>

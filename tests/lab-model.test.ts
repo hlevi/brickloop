@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { partKey, revealOrder } from "@/lib/creature/anim";
-import { Lru, ZONES, easeOutBack, labModel, labTabs, lookKey, recolor, revealStep } from "@/lib/creature/lab";
+import { FIT_QUERY, Lru, ZONES, easeOutBack, labModel, labTabs, lookKey, recolor, revealCaption, revealStep, statChanges, tileJobs } from "@/lib/creature/lab";
+import { creatureStats } from "@/lib/creature/stats";
 import { seededRng, shuffleCalls } from "@/lib/creature/shuffle";
 import { WORLDS } from "@/lib/creature/worlds";
 import { applyTool } from "@/lib/edit/tools";
@@ -103,5 +104,51 @@ describe("alive-mode motion", () => {
     const kept = b.parts.filter((p) => ka.has(partKey(p))).length;
     expect(kept / b.parts.length).toBeGreaterThan(0.7);
     expect(revealOrder(b.parts).at(-1)?.component).toBe("core");
+  });
+
+  it("the reveal caption follows the real booklet steps and ends on Power up!", () => {
+    const m = buildModel({ ...defaultParams("creature"), options: { ...defaultParams("creature").options, legs: "wheels" } });
+    const order = revealOrder(m.parts);
+    const captions = order.map((p) => revealCaption(m.steps, p.step));
+    expect(captions.every((c) => c !== null)).toBe(true);
+    const ns = captions.map((c) => c!.n);
+    expect(ns).toEqual([...ns].sort((a, b) => a - b));
+    expect(captions[0]).toEqual({ n: 1, total: m.steps.length, title: "Wheels" });
+    expect(captions.at(-1)?.title).toBe("Power up!");
+    expect(captions.at(-1)?.n).toBe(m.steps.length);
+    expect(revealCaption(m.steps, 999)).toBeNull();
+  });
+});
+
+describe("stage feedback", () => {
+  it("statChanges lists only the stats that moved, in card order", () => {
+    const base = buildModel(defaultParams("creature"));
+    const wings = buildModel({ ...defaultParams("creature"), options: { ...defaultParams("creature").options, back: "wings" } });
+    const a = creatureStats(base);
+    const b = creatureStats(wings);
+    const ch = statChanges(a, b);
+    expect(ch.find((c) => c.key === "fly")?.delta).toBe(b.fly - a.fly);
+    expect(b.fly).toBe(5);
+    for (const c of ch) expect(c.delta).not.toBe(0);
+    expect(ch.map((c) => c.key)).toEqual(["size", "zoom", "fly", "armor", "chomp"].filter((k) => ch.some((c) => c.key === k)));
+    expect(statChanges(null, b)).toEqual([]);
+    expect(statChanges(b, b)).toEqual([]);
+  });
+
+  it("tileJobs covers every tile of every tab, each differing from the creature in one choice only", () => {
+    const p = defaultParams("creature");
+    const jobs = tileJobs(kit, p);
+    expect(jobs).toHaveLength(kit.options.reduce((n, o) => n + o.values.length, 0) + WORLDS.length);
+    expect(new Set(jobs.map((j) => j.id)).size).toBe(jobs.length);
+    for (const j of jobs) {
+      const changedOptions = Object.keys(p.options).filter((k) => j.params.options[k] !== p.options[k]);
+      expect(changedOptions.length).toBeLessThanOrEqual(1);
+      expect(j.params.colors.core).toBe(p.colors.core);
+    }
+  });
+
+  it("FIT_QUERY names the tablet/desktop layouts that keep everything on one screen", () => {
+    expect(FIT_QUERY).toContain("(min-width: 900px) and (min-height: 560px)");
+    expect(FIT_QUERY).toContain("(min-width: 600px) and (max-width: 899px) and (min-height: 860px)");
   });
 });

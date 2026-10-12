@@ -58,6 +58,13 @@ describe("Creature Lab kid-mode render", () => {
     for (const label of ["Body", "Legs", "Head", "Eyes", "Tail", "Back", "Top", "Colors", "Power", "Name"]) expect(t).toContain(label);
   });
 
+  it("the floating home button stays in kid land (My creatures), never the grown-up home page with prices", () => {
+    const html = renderLab();
+    expect(html).toMatch(/<a[^>]*href="\/lab"[^>]*aria-label="My creatures"|<a[^>]*aria-label="My creatures"[^>]*href="\/lab"/);
+    expect(html).not.toMatch(/href="\/"/);
+    expect(html).toContain('aria-label="Invent another creature"');
+  });
+
   it("the Name tab is reels and tags only (no keyboard)", () => {
     const html = renderLab("name");
     const t = text(html);

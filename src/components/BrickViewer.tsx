@@ -266,7 +266,7 @@ function AliveViewer({ parts, assembleKey = 0, onAssembled, onPartRevealed }: Br
       />
       <directionalLight position={[-12, 10, 12]} intensity={0.5} />
       <AliveCreature parts={parts} bounds={bounds} reduced={reduced} assembleKey={assembleKey} onAssembled={onAssembled} onPartRevealed={onPartRevealed} />
-      <FitCamera radius={Math.max(9, bounds.radius * 0.88)} />
+      <FitCamera radius={Math.max(9, bounds.radius * 0.88)} snap={reduced} />
       <OrbitControls makeDefault target={[0, 0, 0]} enablePan={false} enableZoom={false} enableDamping minPolarAngle={0.3} maxPolarAngle={Math.PI / 2.15} />
     </Canvas>
   );
@@ -291,8 +291,8 @@ function glowTexture(): THREE.Texture {
   return glow;
 }
 
-/** Keeps the whole creature in frame at any stage size, easing when its size changes. */
-function FitCamera({ radius }: { radius: number }) {
+/** Keeps the whole creature in frame at any stage size, easing when its size changes (snapping with reduced motion). */
+function FitCamera({ radius, snap = false }: { radius: number; snap?: boolean }) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
   const size = useThree((s) => s.size);
   const first = useRef(true);
@@ -303,7 +303,7 @@ function FitCamera({ radius }: { radius: number }) {
     // Narrow (phone) stages keep a little extra room at the sides for the Shuffle lever.
     const want = (radius / Math.sin(Math.min(vfov, hfov) / 2)) * (aspect < 1 ? 1.12 : 1);
     const len = camera.position.length() || 1;
-    const next = first.current ? want : len + (want - len) * (1 - Math.exp(-dt * 5));
+    const next = first.current || snap ? want : len + (want - len) * (1 - Math.exp(-dt * 5));
     first.current = false;
     camera.position.multiplyScalar(next / len);
   });
@@ -548,8 +548,8 @@ function AliveCreature({
       const halo = coreHalo.current;
       if (halo) {
         halo.visible = lit;
-        halo.scale.setScalar(2.2 + 1.1 * pulse);
-        (halo.material as THREE.SpriteMaterial).opacity = 0.35 + 0.5 * pulse;
+        halo.scale.setScalar(2.4 + 1.4 * pulse);
+        (halo.material as THREE.SpriteMaterial).opacity = 0.4 + 0.5 * pulse;
       }
     }
   });

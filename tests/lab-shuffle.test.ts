@@ -11,6 +11,8 @@ import {
   seededRng,
   shuffleCalls,
   spinIndex,
+  starterCalls,
+  EDIT_BATCH_MAX,
   worldCalls,
 } from "@/lib/creature/shuffle";
 import { REEL_SIZES, isValidIdentity } from "@/lib/creature/words";
@@ -136,5 +138,38 @@ describe("reels and tags", () => {
     const rnd = seededRng(5);
     for (let i = 0; i < 50; i++) expect(pickDifferent(["a", "b", "c"], "b", rnd)).not.toBe("b");
     expect(pickDifferent(["only"], "only", rnd)).toBe("only");
+  });
+});
+
+describe("starter creature", () => {
+  it("fits one edit request (one revision), covers every value over time and is always buildable", () => {
+    const rnd = seededRng(2024);
+    const base = defaultParams("creature");
+    const seen = new Map<string, Set<string>>();
+    for (let i = 0; i < 300; i++) {
+      const calls = starterCalls(kit, base, rnd);
+      expect(calls.length).toBeLessThanOrEqual(EDIT_BATCH_MAX);
+      expect(calls.filter((c) => c.name === "set_identity")).toHaveLength(1);
+      expect(calls.at(-1)?.name).toBe("set_identity");
+      const next = applyAll(base, calls);
+      expect(currentWorld(next.colors), "the starter always wears a world palette").toBeDefined();
+      expect(next.colors.core).toBe(base.colors.core);
+      for (const id of slotIds) {
+        if (!seen.has(id)) seen.set(id, new Set());
+        seen.get(id)!.add(next.options[id]);
+      }
+      if (i % 30 === 0) expect(validateModel(buildModel(next)).errors).toEqual([]);
+    }
+    // Over many starters every value of every slot shows up.
+    for (const o of kit.options) expect([...seen.get(o.id)!].sort()).toEqual(o.values.map((v) => v.id).sort());
+  });
+
+  it("respects a smaller batch limit by keeping some slots at their default", () => {
+    const rnd = seededRng(8);
+    for (let i = 0; i < 50; i++) {
+      const calls = starterCalls(kit, defaultParams("creature"), rnd, 7);
+      expect(calls.length).toBeLessThanOrEqual(7);
+      expect(calls.some((c) => c.name === "set_identity")).toBe(true);
+    }
   });
 });
