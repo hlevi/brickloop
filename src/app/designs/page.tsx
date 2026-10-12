@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listDesigns } from "@/lib/designs";
 import { getCustomerId } from "@/lib/http";
+import { getKit, isLabKit, isTemplateId } from "@/lib/model/templates";
 
 export default async function MyDesigns() {
   const cid = await getCustomerId(false);
@@ -28,9 +29,9 @@ export default async function MyDesigns() {
               {designs.map((d) => (
                 <tr key={d.id}>
                   <td>
-                    <Link href={`/design/${d.id}`}>{d.name}</Link>
+                    <Link href={d.claimed ? `/design/${d.id}/checkout` : isLabKit(d.template) ? `/lab/${d.id}` : `/design/${d.id}`}>{d.name}</Link>
                   </td>
-                  <td>{d.template}</td>
+                  <td>{d.claimed ? "Creature (from a wish)" : isTemplateId(d.template) ? getKit(d.template).name : d.template}</td>
                   <td className="num">{d.rev}</td>
                   <td className="num">{d.pieces}</td>
                   <td>{new Date(d.updated_at).toLocaleString()}</td>

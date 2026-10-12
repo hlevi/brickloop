@@ -23,7 +23,7 @@ vi.mock("next/link", () => ({ default: ({ href, children, ...rest }: { href: str
 
 import { getDb } from "@/lib/db";
 import { newCustomerToken } from "@/lib/auth/session";
-import { applyEdits, createDesign, getDesignView } from "@/lib/designs";
+import { applyEdits, createDesign, getDesignView, listDesigns } from "@/lib/designs";
 import { assertRateLimit, resetRateLimits, takeToken } from "@/lib/http";
 import { createOrder } from "@/lib/orders/service";
 import { DEFAULT_SETTINGS, getSettings, updateSettings } from "@/lib/settings";
@@ -31,6 +31,7 @@ import { AppError } from "@/lib/util";
 import {
   claimedCreature,
   claimWish,
+  isClaimedCopy,
   createWish,
   formatWishCode,
   getWishForGrownup,
@@ -322,6 +323,11 @@ describe("wishes", () => {
     expect((await claimWish(adult, code)).designId).toBe(copyId);
     expect((await db.query(`SELECT * FROM designs`)).rows).toHaveLength(2);
     expect(await wishForClaimedDesign(copyId)).toMatchObject({ code: code.replace("-", ""), orderId: null });
+    // The grown-up's copy is flagged so "My designs" opens it on checkout, never in the kid Lab.
+    expect(await isClaimedCopy(copyId)).toBe(true);
+    expect(await isClaimedCopy(designId)).toBe(false);
+    expect((await listDesigns(adult)).map((d) => [d.id, d.claimed])).toEqual([[copyId, true]]);
+    expect((await listDesigns(kid)).map((d) => [d.id, d.claimed])).toEqual([[designId, false]]);
   });
 
   it("grown-ups on two devices each get their own copy; the first to order wins and the wish is ordered only once", async () => {

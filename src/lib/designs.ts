@@ -150,8 +150,10 @@ export async function getDesignView(customerId: string, designId: string, q?: Qu
 
 export async function listDesigns(customerId: string) {
   const db = await getDb();
-  const { rows } = await db.query<{ id: string; name: string; template: string; updated_at: string; rev: number; pieces: number }>(
-    `SELECT d.id, d.name, d.template, d.updated_at, r.rev, jsonb_array_length(r.model->'parts') AS pieces
+  // `claimed`: a grown-up's copy made by claiming a wish. It opens on its checkout or order, never in the kid Lab.
+  const { rows } = await db.query<{ id: string; name: string; template: TemplateId; updated_at: string; rev: number; pieces: number; claimed: boolean }>(
+    `SELECT d.id, d.name, d.template, d.updated_at, r.rev, jsonb_array_length(r.model->'parts') AS pieces,
+            EXISTS (SELECT 1 FROM wish_claims c WHERE c.design_id = d.id) AS claimed
      FROM designs d JOIN design_revisions r ON r.id = d.current_revision_id WHERE d.customer_id = $1 ORDER BY d.updated_at DESC`,
     [customerId],
   );

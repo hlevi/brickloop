@@ -3,6 +3,7 @@ import CreatureLab from "@/components/lab/CreatureLab";
 import { getDesignView } from "@/lib/designs";
 import { getCustomerId } from "@/lib/http";
 import { isUuid } from "@/lib/util";
+import { isClaimedCopy } from "@/lib/wishes";
 
 /**
  * The Creature Lab. Ownership is checked here (a design owned by another
@@ -17,6 +18,8 @@ export default async function LabPage(props: { params: Promise<{ id: string }>; 
   const view = cid && isUuid(id) ? await getDesignView(cid, id).catch(() => null) : null;
   if (!view) notFound();
   if (!view.lab) redirect(`/design/${id}`);
+  // A grown-up's claimed copy is frozen for ordering: it opens on its checkout (or order), not in the Lab.
+  if (await isClaimedCopy(id)) redirect(`/design/${id}/checkout`);
   // Keyed by design: "New" (another creature) always starts with fresh Lab state and its own save queue.
   return <CreatureLab key={id} designId={id} initial={{ params: view.params, rev: view.revision.rev, canUndo: view.revision.canUndo }} isNew={sp.new === "1"} />;
 }

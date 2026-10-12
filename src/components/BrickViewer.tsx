@@ -153,15 +153,19 @@ export default function BrickViewer(props: BrickViewerProps) {
 function CadViewer({ parts, uptoStep, highlightStep }: { parts: PlacedPart[]; uptoStep?: number; highlightStep?: number }) {
   const visible = uptoStep ? parts.filter((p) => p.step <= uptoStep) : parts;
   const bounds = useMemo(() => {
-    let maxX = 1, maxZ = 1, maxY = 1;
+    // Frame the occupied box, not the box from the origin: kits like the creatures sit away from (0, 0).
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity, maxY = 1;
     for (const p of parts) {
       const def = PARTS[p.partId];
       const swap = p.rot === 90 || p.rot === 270;
+      minX = Math.min(minX, p.x);
+      minZ = Math.min(minZ, p.z);
       maxX = Math.max(maxX, p.x + (swap ? def.d : def.w));
       maxZ = Math.max(maxZ, p.z + (swap ? def.w : def.d));
       maxY = Math.max(maxY, (p.y + def.h) * PLATE);
     }
-    return { cx: maxX / 2, cz: maxZ / 2, cy: maxY / 2, size: Math.max(maxX, maxZ, maxY) };
+    if (!Number.isFinite(minX)) [minX, maxX, minZ, maxZ] = [0, 1, 0, 1];
+    return { cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, cy: maxY / 2, size: Math.max(maxX - minX, maxZ - minZ, maxY, 1) };
   }, [parts]);
   const dist = bounds.size * 1.7 + 4;
   return (

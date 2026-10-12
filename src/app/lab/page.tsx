@@ -14,7 +14,7 @@ const SHELF_MAX = 24;
 /** The Lab's front door: invent a new creature or reopen one made on this device. No prices, no text inputs. */
 export default async function LabIndex() {
   const cid = await getCustomerId(false);
-  const mine = cid ? (await listDesigns(cid)).filter((d) => isLabKit(d.template)).slice(0, SHELF_MAX) : [];
+  const mine = cid ? (await listDesigns(cid)).filter((d) => isLabKit(d.template) && !d.claimed).slice(0, SHELF_MAX) : [];
   const shelf = cid
     ? (
         await Promise.all(

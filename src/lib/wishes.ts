@@ -410,6 +410,12 @@ export async function markWishOrdered(q: Queryable, code: string, orderId: strin
   await q.query(`UPDATE wishes SET status = 'ordered', order_id = $2, claimed_design_id = $3 WHERE code = $1`, [code, orderId, designId]);
 }
 
+/** True for a grown-up's copy made by claiming a wish: it belongs on its checkout or order page, not in the kid Lab. */
+export async function isClaimedCopy(designId: string): Promise<boolean> {
+  const db = await getDb();
+  return (await db.query(`SELECT 1 FROM wish_claims WHERE design_id = $1`, [designId])).rows.length > 0;
+}
+
 /** What the grown-up's checkout shows for a claimed creature: the frozen copy, never later edits. */
 export interface ClaimedCreature {
   code: string;

@@ -1,6 +1,8 @@
 # BrickLoop
 
-Custom brick-kit pilot. Customers pick an original kit for their builder's age (puppy 4+, race car 6+, dinosaur 7+, cottage 8+, rocket 9+, desk bonsai 12+), customize it with visual controls or chat, and see a live 3D preview, the exact parts list and step-by-step PDF instructions. Each order then goes through a complete supplier quote, customer acceptance and payment authorization, re-checked procurement, capture, tracking and delivery. Exceptions go to an owner dashboard.
+Custom brick-kit pilot. The headline is the **Creature Lab** (`/lab`, ages 6+): a kid snaps together their own creature from modules (body, legs, head, eyes, tail, back, crown), picks a world of colors and a power core, spins a name, and watches it come to life in 3D with a trading card whose stats are calculated from the real bricks. "Show a grown-up" makes a wish code; the grown-up opens it on their own device, sees one fixed price and orders the real bricks with a personalized Creature Pack PDF (card, certificate, building steps), while the kid's wish card shows how far the bricks have got. The kid side has no prices, no text boxes and collects no personal data. See [docs/CREATURE_LAB.md](docs/CREATURE_LAB.md).
+
+Grown-ups can also pick an original kit for their builder's age (puppy 4+, race car 6+, dinosaur 7+, cottage 8+, rocket 9+, desk bonsai 12+), customize it with visual controls or chat, and see a live 3D preview, the exact parts list and step-by-step PDF instructions. Each order then goes through a complete supplier quote, customer acceptance and payment authorization, re-checked procurement, capture, tracking and delivery. Exceptions go to an owner dashboard.
 
 > **Simulation mode.** No supplier has been verified for automated purchasing (see [docs/SUPPLIER_CAPABILITIES.md](docs/SUPPLIER_CAPABILITIES.md)). Quotes, payments, purchases and shipments are produced by deterministic simulators, and are labeled as such in the UI, notifications, PDFs and database records (`mode = 'simulated'`). Live purchasing is disabled until every item in the admin "Live readiness" checklist is satisfied.
 
@@ -24,6 +26,7 @@ No database server, API keys or supplier credentials are needed. Data is stored 
 
 ## What works
 - **Kits:** six original kits across age bands, modeled on popular kit categories (first-build animal, vehicle, brick-built animal, house, space, botanical display) without copying any specific set. Each is authored as a layered voxel blueprint (`src/lib/model/templates/`) and compiled by `src/lib/model/kit.ts` into real parts. The compiler bridges joints between layers, places supported parts first, repairs overhangs, and handles slopes, ridges, tiles, round parts and wheels. Bounded edits: colors per component plus per-kit options (size, chimney, stages, jaw, spines, blossoms, wing, and so on).
+- **Creature Lab:** 4,860 module combinations, every one compiled and digitally validated (`CREATURE_EXHAUSTIVE=1 npm test` runs them all; the default run checks a covering set plus a seeded sample). Names and builder tags come from word reels and are stored as indices only. Wish codes are 8 characters from a 31-character alphabet, expire after 30 days and are rate limited. A claim copies the frozen revision to the grown-up, and only that copy can be ordered, at the fixed price (`creaturePriceCents` in admin settings, default $24).
 - **Validation:** catalog and palette checks, voxel collision detection, stud connectivity to the ground (plus wheel-pin attachments), step-order feasibility, and warnings (single-stud holds, long overhangs, insert-from-below). Physical validation is a separate registry, and it is currently empty.
 - **One source of truth:** the 3D viewer, isometric step diagrams, PDF instructions (cover, parts page, one page per step with parts callouts and a FRONT cue), BOM, CSV and BrickLink wanted-list XML all derive from the same model.
 - **Editing:** visual controls, chat (LLM with structured tools when `ANTHROPIC_API_KEY` is set, a rule-based mock otherwise), deterministic validation of every tool call, clarifying questions, explanations for unsupported edits, undo/reset, versioned revisions, saved designs, budget suggestions.
@@ -41,5 +44,8 @@ No database server, API keys or supplier credentials are needed. Data is stored 
 | Email/SMS alerts | Logged to DB and dashboard | Needs a mail/SMS provider |
 | Part weights (reuse reporting) | Not available (0% coverage) | Reliable weight data source |
 | Carbon comparisons | Disabled by design | Evidence-based methodology |
+| Creature Lab fixed price ($24) | Simulated quote is held at the fixed price | Real supplier costs for the trans-colored power cores and wheels; owner sign-off on the price |
+| Children's privacy (COPPA and similar) | Designed to collect no child data | Legal review before any public launch |
+| Wish-code rate limits | In memory, per process | A shared store (or a single instance) and a proxy that overwrites `X-Forwarded-For` (docs/DEPLOYMENT.md) |
 
-More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+More detail: [docs/CREATURE_LAB.md](docs/CREATURE_LAB.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).

@@ -174,7 +174,7 @@ export default function OrderView({ orderId }: { orderId: string }) {
             <p className="small">
               {o.frozen_bom.totalPieces} pieces &middot; design frozen at checkout &middot;{" "}
               <a href={`/api/orders/${orderId}/instructions`} target="_blank" rel="noreferrer">
-                {fixed && identity ? `${renderName(identity)}'s building booklet (PDF)` : "Building instructions (PDF)"}
+                {fixed && identity ? `${renderName(identity)}'s Creature Pack (PDF): card, certificate and building steps` : "Building instructions (PDF)"}
               </a>
             </p>
           </section>
