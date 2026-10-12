@@ -1,0 +1,7 @@
+/* Kid mode chrome: the Lab is a toy, so the grown-up navigation (orders, admin, ...) is hidden on /lab. */
+body:has(.lab-shell) .topbar .nav {
+  display: none;
+}
+body:has(.lab-shell) .container {
+  padding-top: 8px;
+}
