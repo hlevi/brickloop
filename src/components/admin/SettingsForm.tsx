@@ -11,7 +11,7 @@ async function send(url: string, method: string, body: unknown) {
   return j;
 }
 
-const NUMERIC: { key: keyof OperatingSettings; label: string; cents?: boolean }[] = [
+const NUMERIC: { key: keyof OperatingSettings; label: string; cents?: boolean; min?: number; hint?: string }[] = [
   { key: "maxOrderSupplierCents", label: "Per-order supplier spend limit", cents: true },
   { key: "dailySpendLimitCents", label: "Daily supplier spend limit", cents: true },
   { key: "minContributionCents", label: "Minimum contribution per order", cents: true },
@@ -22,6 +22,7 @@ const NUMERIC: { key: keyof OperatingSettings; label: string; cents?: boolean }[
   { key: "digestIntervalHours", label: "Exception digest interval (hours)" },
   { key: "deliveryGraceDays", label: "Delivery delay grace (days)" },
   { key: "authEscalateAfterHours", label: "Escalate uncaptured authorization after (hours)" },
+  { key: "creaturePriceCents", label: "Creature Lab fixed price, incl. delivery and taxes", cents: true, min: 1, hint: "One price for every creature, shown only to grown-ups. Applies to new orders; quotes, limits and the minimum contribution are still checked." },
 ];
 
 export default function SettingsForm({ settings, sim, parts, colors }: { settings: OperatingSettings; sim: SimulatorSettings; parts: { id: string; name: string; bl: string }[]; colors: { id: string; name: string; bl: number }[] }) {
@@ -60,7 +61,12 @@ export default function SettingsForm({ settings, sim, parts, colors }: { setting
               {n.label}
               {n.cents ? " (USD)" : ""}
             </label>
-            <input id={n.key} name={n.key} type="number" step={n.cents ? "0.01" : "1"} min="0" defaultValue={n.cents ? (settings[n.key] as number) / 100 : (settings[n.key] as number)} />
+            <input id={n.key} name={n.key} type="number" step={n.cents ? "0.01" : "1"} min={n.min ?? 0} defaultValue={n.cents ? (settings[n.key] as number) / 100 : (settings[n.key] as number)} aria-describedby={n.hint ? `${n.key}-hint` : undefined} />
+            {n.hint && (
+              <span id={`${n.key}-hint`} className="small muted">
+                {n.hint}
+              </span>
+            )}
           </div>
         ))}
         <div className="field">

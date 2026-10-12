@@ -93,6 +93,39 @@ export async function createDesign(customerId: string, template: TemplateId, nam
   });
 }
 
+/**
+ * Copy one frozen revision into a NEW design owned by `customerId` (used when a
+ * grown-up claims a kid's wish). The params, model and validation are copied
+ * exactly, so the structuralKey and every brick match what was frozen, even if
+ * the kit compiler changes later. The source design is never touched. Pass `q`
+ * to run inside the caller's transaction.
+ */
+export async function createDesignFromRevision(customerId: string, revisionId: string, source: "wish", opts: { note?: string; q?: Queryable } = {}): Promise<string> {
+  const run = async (q: Queryable) => {
+    const { rows } = await q.query<{ params: DesignParams; model: DesignModel; validation: ValidationResult; template: TemplateId; name: string }>(
+      `SELECT r.params, r.model, r.validation, d.template, d.name FROM design_revisions r JOIN designs d ON d.id = r.design_id WHERE r.id = $1`,
+      [revisionId],
+    );
+    const src = rows[0];
+    if (!src) throw new AppError("not_found", "Design not found", 404);
+    await ensureCustomer(q, customerId);
+    const id = uuid();
+    const name = (isLabKit(src.template) ? (src.params.identity ? renderName(src.params.identity) : getKit(src.template).name) : src.name).slice(0, 80);
+    await q.query(`INSERT INTO designs(id, customer_id, template, name) VALUES ($1,$2,$3,$4)`, [id, customerId, src.template, name]);
+    const revId = uuid();
+    await q.query(
+      `INSERT INTO design_revisions(id, design_id, rev, parent_revision_id, params, model, validation, source, note) VALUES ($1,$2,1,NULL,$3,$4,$5,$6,$7)`,
+      [revId, id, JSON.stringify(src.params), JSON.stringify(src.model), JSON.stringify(src.validation), source, opts.note ?? "Copied from a frozen revision"],
+    );
+    await q.query(`UPDATE designs SET current_revision_id = $2, updated_at = now() WHERE id = $1`, [id, revId]);
+    await audit(q, `customer:${customerId}`, "design.create_from_revision", "design", id, { source, template: src.template });
+    return id;
+  };
+  if (opts.q) return run(opts.q);
+  const db = await getDb();
+  return db.tx(run);
+}
+
 export async function getDesignView(customerId: string, designId: string, q?: Queryable): Promise<DesignView> {
   const db = q ?? (await getDb());
   const d = await loadOwned(db, customerId, designId);

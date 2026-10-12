@@ -2,8 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { formatCents } from "@/lib/format";
 
-export default function CheckoutForm({ designId }: { designId: string }) {
+/** Adult purchaser checkout. With `fixedPriceCents` (Creature Lab) there is no budget: the quote is always that price. */
+export default function CheckoutForm({ designId, fixedPriceCents }: { designId: string; fixedPriceCents?: number }) {
+  const fixed = typeof fixedPriceCents === "number";
   const router = useRouter();
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -15,7 +18,7 @@ export default function CheckoutForm({ designId }: { designId: string }) {
         setErr(null);
         const f = new FormData(e.currentTarget);
         const get = (k: string) => String(f.get(k) ?? "").trim();
-        const budget = get("budget");
+        const budget = fixed ? "" : get("budget");
         setBusy(true);
         const r = await fetch("/api/orders", {
           method: "POST",
@@ -70,16 +73,22 @@ export default function CheckoutForm({ designId }: { designId: string }) {
           <input id="country" name="country" type="text" autoComplete="country" required maxLength={2} defaultValue="US" />
         </div>
       </div>
-      <div className="field">
-        <label htmlFor="budget">Budget (optional, USD)</label>
-        <input id="budget" name="budget" type="number" min="1" step="1" style={{ maxWidth: 160 }} />
-      </div>
+      {fixed ? (
+        <p className="small" style={{ marginTop: 0 }}>
+          <strong>{formatCents(fixedPriceCents)}</strong> fixed price, includes delivery and taxes. The confirmed quote will be exactly this amount.
+        </p>
+      ) : (
+        <div className="field">
+          <label htmlFor="budget">Budget (optional, USD)</label>
+          <input id="budget" name="budget" type="number" min="1" step="1" style={{ maxWidth: 160 }} />
+        </div>
+      )}
       <label className="row small" style={{ marginBottom: 14 }}>
         <input type="checkbox" name="adult" required /> I am 18 or older and I am the purchaser.
       </label>
       {err && <p className="error">{err}</p>}
       <button className="btn primary" disabled={busy}>
-        {busy ? "Requesting quote..." : "Request confirmed quote"}
+        {busy ? "Requesting quote..." : fixed ? `Continue at ${formatCents(fixedPriceCents)}` : "Request confirmed quote"}
       </button>
     </form>
   );

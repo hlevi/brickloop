@@ -78,3 +78,53 @@ export function assertSameOrigin(req: Request) {
 }
 
 export type Ctx<P extends string = "id"> = { params: Promise<Record<P, string>> };
+
+/* ---------------------------------------------------------------- rate limit */
+
+interface Bucket {
+  tokens: number;
+  at: number;
+}
+const rl = globalThis as unknown as { __brickloopRateLimit?: Map<string, Bucket> };
+const MAX_BUCKETS = 10_000;
+
+/**
+ * Small in-memory token bucket per key (per process). A bucket holds `limit`
+ * tokens and refills continuously over `windowMs`, so a key gets at most
+ * `limit` requests in a burst and about `limit` per window after that.
+ * Returns false when the request should be refused.
+ */
+export function takeToken(key: string, limit: number, windowMs: number, now = Date.now()): boolean {
+  const buckets = (rl.__brickloopRateLimit ??= new Map());
+  let b = buckets.get(key);
+  if (!b) {
+    if (buckets.size >= MAX_BUCKETS) {
+      // Drop buckets that have refilled completely; they carry no state worth keeping.
+      for (const [k, v] of buckets) if (v.tokens + ((now - v.at) * limit) / windowMs >= limit) buckets.delete(k);
+      if (buckets.size >= MAX_BUCKETS) buckets.delete(buckets.keys().next().value!);
+    }
+    b = { tokens: limit, at: now };
+    buckets.set(key, b);
+  }
+  b.tokens = Math.min(limit, b.tokens + (Math.max(0, now - b.at) * limit) / windowMs);
+  b.at = now;
+  if (b.tokens < 1) return false;
+  b.tokens -= 1;
+  return true;
+}
+
+/** Tests: forget every bucket. */
+export function resetRateLimits() {
+  rl.__brickloopRateLimit?.clear();
+}
+
+/** Best-effort client IP (first X-Forwarded-For hop, as set by the proxy in front of the app). */
+export function clientIp(h: Headers): string {
+  const fwd = h.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return fwd || h.get("x-real-ip")?.trim() || "unknown";
+}
+
+/** Throw HTTP 429 when this client IP made more than `limit` requests per `windowMs` in `scope`. */
+export function assertRateLimit(h: Headers, scope: string, limit: number, windowMs = 60_000) {
+  if (!takeToken(`${scope}:${clientIp(h)}`, limit, windowMs)) throw new AppError("rate_limited", "Too many tries. Please wait a minute and try again.", 429);
+}

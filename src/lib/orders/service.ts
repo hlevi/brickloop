@@ -6,6 +6,7 @@ import { env } from "../config";
 import { ensureCustomer } from "../designs";
 import { raiseException, resolveAllForOrder } from "../exceptions/service";
 import { enqueue } from "../jobs/queue";
+import { isLabKit } from "../model/templates";
 import type { DesignModel } from "../model/types";
 import { getPaymentProvider } from "../payments/simulated";
 import { PaymentDeclinedError } from "../payments/types";
@@ -15,7 +16,7 @@ import type { ShipTo } from "../suppliers/types";
 import { AppError, isUuid, uuid } from "../util";
 import type { ValidationResult } from "../validation/validate";
 import { liveReadiness } from "./live";
-import { lockOrder, transition, type OrderStatus } from "./stateMachine";
+import { lockOrder, TERMINAL, transition, type OrderStatus } from "./stateMachine";
 
 export interface Contact {
   name: string;
@@ -44,6 +45,10 @@ export interface OrderRow {
   estimated_delivery_at: string | null;
   delivered_at: string | null;
   procurement_attempts: number;
+  /** Lab kits: one fixed price incl. delivery and taxes; the quote's customer total equals it. */
+  fixed_price_cents: number | null;
+  /** Lab kits: the wish this order came from. */
+  wish_code: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -116,7 +121,10 @@ export async function notifyCustomer(q: Queryable, orderId: string, subject: str
   await q.query(`INSERT INTO notifications(kind, channel, recipient, subject, body) VALUES ('customer','log',$1,$2,$3)`, [c.contact.email, prefix + subject, body]);
 }
 
-/** Start checkout: freeze the current design revision and its parts list, then hand off to the workflow. */
+/**
+ * Start checkout: freeze the current design revision and its parts list, then hand off to the workflow.
+ * Lab kits (Creature Lab) are orderable only through a grown-up's wish claim and use one fixed price.
+ */
 export async function createOrder(customerId: string, input: { designId: string; contact: unknown; adultConfirmed: unknown; budgetCents?: unknown }): Promise<string> {
   if (!isUuid(input.designId)) throw new AppError("not_found", "Design not found", 404);
   if (input.adultConfirmed !== true) throw new AppError("adult_required", "The purchaser must confirm they are 18 or older");
@@ -132,20 +140,49 @@ export async function createOrder(customerId: string, input: { designId: string;
   const lookup = await loadMappingLookup();
   return db.tx(async (q) => {
     await ensureCustomer(q, customerId);
-    const d = await q.query<{ current_revision_id: string }>(`SELECT current_revision_id FROM designs WHERE id = $1 AND customer_id = $2`, [input.designId, customerId]);
+    const d = await q.query<{ current_revision_id: string; template: string }>(`SELECT current_revision_id, template FROM designs WHERE id = $1 AND customer_id = $2`, [input.designId, customerId]);
     if (!d.rows[0]) throw new AppError("not_found", "Design not found", 404);
     const revId = d.rows[0].current_revision_id;
+    let wishCode: string | null = null;
+    let fixedPrice: number | null = null;
+    if (isLabKit(d.rows[0].template)) {
+      // Only a grown-up's copy made by claiming a wish can be ordered; a kid's Lab design never reaches checkout.
+      const w = await q.query<{ code: string; order_id: string | null }>(`SELECT code, order_id FROM wishes WHERE claimed_design_id = $1 FOR UPDATE`, [input.designId]);
+      if (!w.rows[0]) throw new AppError("not_found", "Design not found", 404);
+      if (w.rows[0].order_id) {
+        const prev = await q.query<{ status: OrderStatus }>(`SELECT status FROM orders WHERE id = $1`, [w.rows[0].order_id]);
+        if (prev.rows[0] && !TERMINAL.includes(prev.rows[0].status)) throw new AppError("already_ordered", "These bricks are already ordered. See My orders.", 409);
+      }
+      wishCode = w.rows[0].code;
+      fixedPrice = settings.creaturePriceCents;
+    }
     const rev = await q.query<{ model: DesignModel; validation: ValidationResult }>(`SELECT model, validation FROM design_revisions WHERE id = $1`, [revId]);
     const model = rev.rows[0].model;
     const bom = computeBom(model, lookup);
     const id = uuid();
     await q.query(
-      `INSERT INTO orders(id, customer_id, design_id, design_revision_id, status, mode, supplier, frozen_model, frozen_bom, frozen_validation, contact, adult_confirmed, budget_cents, environmental_label)
-       VALUES ($1,$2,$3,$4,'draft',$5,$6,$7,$8,$9,$10,true,$11,$12)`,
-      [id, customerId, input.designId, revId, mode, supplier, JSON.stringify(model), JSON.stringify(bom), JSON.stringify(rev.rows[0].validation), JSON.stringify(contact), budget, environmentalLabel(settings.condition)],
+      `INSERT INTO orders(id, customer_id, design_id, design_revision_id, status, mode, supplier, frozen_model, frozen_bom, frozen_validation, contact, adult_confirmed, budget_cents, environmental_label, fixed_price_cents, wish_code)
+       VALUES ($1,$2,$3,$4,'draft',$5,$6,$7,$8,$9,$10,true,$11,$12,$13,$14)`,
+      [
+        id,
+        customerId,
+        input.designId,
+        revId,
+        mode,
+        supplier,
+        JSON.stringify(model),
+        JSON.stringify(bom),
+        JSON.stringify(rev.rows[0].validation),
+        JSON.stringify(contact),
+        fixedPrice === null ? budget : null, // a fixed price needs no budget
+        environmentalLabel(settings.condition),
+        fixedPrice,
+        wishCode,
+      ],
     );
+    if (wishCode) await q.query(`UPDATE wishes SET status = 'ordered', order_id = $2 WHERE code = $1`, [wishCode, id]);
     await q.query(`INSERT INTO order_status_history(order_id, from_status, to_status, reason, actor) VALUES ($1,NULL,'draft','checkout started',$2)`, [id, `customer:${customerId}`]);
-    await audit(q, `customer:${customerId}`, "order.create", "order", id, { designRevisionId: revId, mode });
+    await audit(q, `customer:${customerId}`, "order.create", "order", id, { designRevisionId: revId, mode, ...(fixedPrice !== null ? { fixedPriceCents: fixedPrice } : {}) });
     await transition(q, id, "validating", "design frozen for validation", "system");
     await enqueue(q, "order.validate", { orderId: id }, { dedupeKey: `validate:${id}:1` });
     return id;
