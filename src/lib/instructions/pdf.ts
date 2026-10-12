@@ -48,7 +48,6 @@ export async function generateInstructionsPdf(model: DesignModel, opts: Instruct
         validation: opts.validation,
         pieces: bom.totalPieces,
         pageW: PAGE_W,
-        pageH: PAGE_H,
         margin: MARGIN,
       }
     : null;

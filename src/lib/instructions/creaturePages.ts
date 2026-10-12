@@ -68,7 +68,6 @@ export interface PackContext {
   validation: ValidationResult;
   pieces: number;
   pageW: number;
-  pageH: number;
   margin: number;
 }
 
