@@ -14,6 +14,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "worker": "tsx scripts/worker.ts",
     "demo:order": "tsx scripts/demo-order.ts",
+    "demo:wish": "tsx scripts/demo-wish.ts",
     "export:samples": "tsx scripts/export-samples.ts"
   },
   "engines": {

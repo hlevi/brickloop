@@ -20,6 +20,7 @@ No database server, API keys or supplier credentials are needed. Data is stored 
 | `npm test` | Unit and integration tests (in-memory Postgres via PGlite) |
 | `npm run typecheck` | TypeScript check |
 | `npm run demo:order` | Headless end-to-end simulated order |
+| `npm run demo:wish` | Headless Creature Lab flow: kid wish, grown-up claim and order, kid status to delivery (simulated) |
 | `npm run export:samples` | Sample PDFs, CSVs and BrickLink XML in `out/samples/` |
 | `npm run db:migrate` | Apply migrations (PostgreSQL when `DATABASE_URL` is set) |
 | `npm run worker` | Standalone worker (PostgreSQL deployments) |

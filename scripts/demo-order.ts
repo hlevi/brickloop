@@ -21,9 +21,9 @@ const runAll = async () => {
   }
 };
 const customer = crypto.randomUUID();
-const designId = await createDesign(customer, "house");
-await applyEdits(customer, designId, [{ name: "set_house_width", input: { width: 10 } }, { name: "set_color", input: { component: "roof", color: "blue" } }], "visual");
-console.log("Design created and customized (10-stud house, blue roof).");
+const designId = await createDesign(customer, "cottage");
+await applyEdits(customer, designId, [{ name: "set_option", input: { option: "size", value: "roomy" } }, { name: "set_color", input: { component: "roof", color: "blue" } }], "visual");
+console.log("Design created and customized (roomy cottage, blue roof).");
 const orderId = await createOrder(customer, {
   designId,
   adultConfirmed: true,
