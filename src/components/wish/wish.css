@@ -280,3 +280,69 @@ input[type="text"].wg-code-input {
   min-height: 52px;
   flex: 0 0 auto;
 }
+
+/* Checkout for a claimed creature (/design/[id]/checkout). */
+.wg-checkout {
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.wg-checkout .wg-eyebrow {
+  margin: 0;
+}
+.wg-summary {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.wg-summary-art {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(180deg, #fbfaf7, #efede6);
+  border-radius: 12px;
+  padding: 8px;
+}
+.wg-summary-art svg {
+  max-width: 100%;
+  height: auto;
+  max-height: 200px;
+}
+.wg-summary-text {
+  flex: 1 1 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.wg-summary-name {
+  margin: 0;
+  font-size: clamp(1.6rem, 5vw, 2.2rem);
+  font-weight: 900;
+  line-height: 1.05;
+}
+.wg-summary-price {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wg-summary-price .wg-price {
+  font-size: 2rem;
+}
+.wg-next {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+}
+.wg-next li + li {
+  margin-top: 2px;
+}
+@media (max-width: 600px) {
+  .wg-summary-art {
+    flex: 1 1 100%;
+  }
+}

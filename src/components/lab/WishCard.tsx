@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { backdropFor } from "@/lib/creature/worlds";
 import { renderIso, toSvg } from "@/lib/instructions/iso";
 import type { KidStage, KidStatus, KidWish } from "@/lib/wishes";
-import { NOTE_STICKERS, type NoteId } from "@/components/wish/notes";
+import { NOTE_STICKERS, noteSticker, type NoteId } from "@/components/wish/notes";
 import "@/components/wish/wish-card.css";
 
 export interface WishCardProps {
@@ -35,7 +35,7 @@ export const STAGE_TEXT: Record<KidStage, { icon: string; text: string }> = {
 
 export default function WishCard({ designId, onClose }: WishCardProps) {
   const [wish, setWish] = useState<KidWish | null>(null);
-  const [note, setNote] = useState<NoteId>("invented");
+  const [note, setNote] = useState<NoteId | null>(null);
   const [status, setStatus] = useState<KidStatus>({ stage: "waiting", slow: false });
   const [failed, setFailed] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
@@ -43,9 +43,10 @@ export default function WishCard({ designId, onClose }: WishCardProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const noteChain = useRef<Promise<unknown>>(Promise.resolve());
 
+  /** Without a note: open the wish for the creature on screen, keeping the sticker picked before. */
   const makeWish = useCallback(
-    async (n: NoteId) => {
-      const r = await fetch(`/api/designs/${designId}/wish`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: n }) });
+    async (n?: NoteId) => {
+      const r = await fetch(`/api/designs/${designId}/wish`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(n ? { note: n } : {}) });
       if (!r.ok) throw new Error(String(r.status));
       const w = (await r.json()) as KidWish;
       setWish(w);
@@ -57,7 +58,12 @@ export default function WishCard({ designId, onClose }: WishCardProps) {
 
   const start = useCallback(() => {
     setFailed(false);
-    makeWish("invented").catch(() => setFailed(true));
+    // Sticker taps made while the card is opening wait for it (same promise chain).
+    noteChain.current = noteChain.current.then(() =>
+      makeWish()
+        .then((w) => setNote((picked) => picked ?? w.note))
+        .catch(() => setFailed(true)),
+    );
   }, [makeWish]);
 
   // Create (or reuse) the wish when the card opens.
@@ -132,7 +138,14 @@ export default function WishCard({ designId, onClose }: WishCardProps) {
     if (n === note) return;
     setNote(n);
     // Same revision, same code: the server only swaps the sticker. Serialize taps.
-    noteChain.current = noteChain.current.then(() => makeWish(n).catch(() => undefined));
+    noteChain.current = noteChain.current.then(() =>
+      makeWish(n)
+        .then((w) => {
+          // A grown-up ordered meanwhile: show the sticker they saw.
+          if (w.note !== n) setNote(w.note);
+        })
+        .catch(() => undefined),
+    );
   };
 
   const art = useMemo(() => (wish ? toSvg(renderIso(wish.parts), { width: 360 }) : ""), [wish]);
@@ -212,19 +225,36 @@ export default function WishCard({ designId, onClose }: WishCardProps) {
             </section>
           </div>
 
-          <section className="wk-notes" aria-label="Add a sticker">
-            <p className="wk-notes-title">Add a sticker</p>
-            <div className="wk-note-row">
-              {NOTE_STICKERS.map((n) => (
-                <button key={n.id} className="wk-note" aria-pressed={note === n.id} onClick={() => pickNote(n.id)}>
-                  <span className="wk-note-icon" aria-hidden>
-                    {n.icon}
+          {ordered ? (
+            // Once the bricks are ordered, the sticker the grown-up saw stays put.
+            note && (
+              <section className="wk-notes" aria-label="Your sticker">
+                <p className="wk-notes-title">Your sticker</p>
+                <div className="wk-note-row">
+                  <span className="wk-note is-kept">
+                    <span className="wk-note-icon" aria-hidden>
+                      {noteSticker(note).icon}
+                    </span>
+                    <span>{noteSticker(note).label}</span>
                   </span>
-                  <span>{n.label}</span>
-                </button>
-              ))}
-            </div>
-          </section>
+                </div>
+              </section>
+            )
+          ) : (
+            <section className="wk-notes" aria-label="Add a sticker">
+              <p className="wk-notes-title">Add a sticker</p>
+              <div className="wk-note-row">
+                {NOTE_STICKERS.map((n) => (
+                  <button key={n.id} className="wk-note" aria-pressed={note === n.id} onClick={() => pickNote(n.id)}>
+                    <span className="wk-note-icon" aria-hidden>
+                      {n.icon}
+                    </span>
+                    <span>{n.label}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </div>
     </div>

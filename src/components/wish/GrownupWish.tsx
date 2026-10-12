@@ -67,7 +67,7 @@ export function InactiveWish() {
   );
 }
 
-function GrownupView({ data }: { data: WishData }) {
+export function GrownupView({ data }: { data: WishData }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);

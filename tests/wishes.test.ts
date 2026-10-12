@@ -1,15 +1,35 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+
+/** A stand-in cookie jar for route handlers (next/headers needs a live request otherwise). */
+const jar = vi.hoisted(() => ({ token: undefined as string | undefined, writes: [] as string[] }));
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) => (name === "bl_customer" && jar.token ? { name, value: jar.token } : undefined),
+    set: (name: string, value: string) => {
+      jar.writes.push(name);
+      if (name === "bl_customer") jar.token = value;
+    },
+    delete: () => undefined,
+  }),
+  headers: async () => new Headers(),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push() {}, replace() {}, refresh() {}, back() {}, forward() {}, prefetch() {} }) }));
+vi.mock("next/dynamic", () => ({ default: () => () => null }));
+vi.mock("next/link", () => ({ default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => createElement("a", { href, ...rest }, children) }));
+
 import { getDb } from "@/lib/db";
+import { newCustomerToken } from "@/lib/auth/session";
 import { applyEdits, createDesign, getDesignView } from "@/lib/designs";
 import { assertRateLimit, resetRateLimits, takeToken } from "@/lib/http";
 import { createOrder } from "@/lib/orders/service";
 import { DEFAULT_SETTINGS, getSettings, updateSettings } from "@/lib/settings";
 import { AppError } from "@/lib/util";
 import {
+  claimedCreature,
   claimWish,
   createWish,
   formatWishCode,
@@ -20,12 +40,15 @@ import {
   buildMinutes,
   newWishCode,
   normalizeWishCode,
+  openWish,
   WISH_ALPHABET,
   wishForClaimedDesign,
   wishIsActive,
 } from "@/lib/wishes";
 import { birthYearOptions, isAdultBirthYear } from "@/components/wish/age";
 import AgeGate from "@/components/wish/AgeGate";
+import { GrownupView } from "@/components/wish/GrownupWish";
+import WishCard, { STAGE_TEXT } from "@/components/lab/WishCard";
 import { CONTACT, freshDb } from "./helpers";
 
 const cust = () => crypto.randomUUID();
@@ -301,20 +324,74 @@ describe("wishes", () => {
     expect(await wishForClaimedDesign(copyId)).toMatchObject({ code: code.replace("-", ""), orderId: null });
   });
 
-  it("a later grown-up on another device takes over the claim until the bricks are ordered", async () => {
+  it("grown-ups on two devices each get their own copy; the first to order wins and the wish is ordered only once", async () => {
     const { code } = await kidWithWish();
     const phone = cust();
     const laptop = cust();
     const a = await claimWish(phone, code);
     const b = await claimWish(laptop, code);
     expect(b.designId).not.toBe(a.designId);
-    await expect(createOrder(phone, { designId: a.designId, contact: CONTACT, adultConfirmed: true })).rejects.toThrow(/not found/i);
+    // Claiming again is idempotent per grown-up, even after someone else claimed in between.
+    expect(await claimWish(phone, code)).toEqual({ designId: a.designId, orderId: null });
     const orderId = await createOrder(laptop, { designId: b.designId, contact: CONTACT, adultConfirmed: true });
-    // Once ordered, nobody else can claim it, and the same grown-up is sent to their order.
+    // Once ordered, nobody else can order or claim it, and the same grown-up is sent to their order.
+    await expect(createOrder(phone, { designId: a.designId, contact: CONTACT, adultConfirmed: true })).rejects.toThrow(/already ordered/);
     await expect(claimWish(phone, code)).rejects.toThrow(/already ordered/);
     expect(await claimWish(laptop, code)).toEqual({ designId: b.designId, orderId });
     await expect(createOrder(laptop, { designId: b.designId, contact: CONTACT, adultConfirmed: true })).rejects.toThrow(/already ordered/);
     expect((await getWishForGrownup(code)).ordered).toBe(true);
+    const db = await getDb();
+    expect((await db.query(`SELECT * FROM orders`)).rows).toHaveLength(1);
+    expect((await db.query<{ claimed_design_id: string; order_id: string }>(`SELECT * FROM wishes`)).rows[0]).toMatchObject({ claimed_design_id: b.designId, order_id: orderId });
+  });
+
+  it("orders the frozen copy even if the grown-up's copy is edited after claiming", async () => {
+    const { code } = await kidWithWish();
+    const adult = cust();
+    const { designId } = await claimWish(adult, code);
+    const frozen = await getDesignView(adult, designId);
+    await applyEdits(adult, designId, [{ name: "set_option", input: { option: "back", value: frozen.params.options.back === "wings" ? "shell" : "wings" } }], "visual");
+    expect((await getDesignView(adult, designId)).model.structuralKey).not.toBe(frozen.model.structuralKey);
+    const orderId = await createOrder(adult, { designId, contact: CONTACT, adultConfirmed: true });
+    const db = await getDb();
+    const o = (await db.query<{ design_revision_id: string; frozen_model: { structuralKey: string } }>(`SELECT * FROM orders WHERE id = $1`, [orderId])).rows[0];
+    expect(o.design_revision_id).toBe(frozen.revision.id);
+    expect(o.frozen_model.structuralKey).toBe(frozen.model.structuralKey);
+    const shown = await claimedCreature(adult, designId);
+    expect(shown?.model.structuralKey).toBe(frozen.model.structuralKey);
+    expect(shown?.openOrder).toEqual({ id: orderId, mine: true });
+  });
+
+  it("refuses to order a claimed creature once its wish code has expired", async () => {
+    const { code } = await kidWithWish();
+    const adult = cust();
+    const { designId } = await claimWish(adult, code);
+    const db = await getDb();
+    await db.query(`UPDATE wishes SET expires_at = now() - interval '1 minute'`);
+    await expect(createOrder(adult, { designId, contact: CONTACT, adultConfirmed: true })).rejects.toThrow(/isn't active/);
+    expect((await claimedCreature(adult, designId))?.active).toBe(false);
+    expect((await db.query(`SELECT * FROM orders`)).rows).toHaveLength(0);
+  });
+
+  it("opening the wish card again keeps the sticker the kid picked", async () => {
+    const { kid, designId, code } = await kidWithWish("special_day");
+    const again = await openWish(kid, designId);
+    expect(again).toMatchObject({ code, note: "special_day" });
+    // A fresh revision gets a fresh wish with the default sticker.
+    await applyEdits(kid, designId, [{ name: "set_identity", input: { name: [2, 2, 2], builder: [2, 2, 2] } }], "visual");
+    const fresh = await openWish(kid, designId);
+    expect(fresh.code).not.toBe(code);
+    expect(fresh.note).toBe("invented");
+    await expect(openWish(cust(), designId)).rejects.toThrow(/not found/i);
+  });
+
+  it("keeps the sticker the grown-up saw once the bricks are ordered", async () => {
+    const { kid, designId, code } = await kidWithWish("together");
+    const adult = cust();
+    const { designId: copy } = await claimWish(adult, code);
+    await createOrder(adult, { designId: copy, contact: CONTACT, adultConfirmed: true });
+    const after = await createWish(kid, designId, "special_day");
+    expect(after).toMatchObject({ code, note: "together", status: { stage: "ordered", slow: false } });
   });
 
   it("a kid's Lab design (or any unclaimed creature) can never be ordered directly", async () => {
@@ -377,5 +454,160 @@ describe("fixed creature price setting", () => {
     for (const bad of [-100, 0, 99, 12.5, 100001, Number.NaN]) await expect(updateSettings({ creaturePriceCents: bad }, "test")).rejects.toThrow(/creaturePriceCents/);
     expect((await updateSettings({ creaturePriceCents: 2900 }, "test")).creaturePriceCents).toBe(2900);
     expect((await getSettings()).creaturePriceCents).toBe(2900);
+  });
+});
+
+describe("wish routes (cookies)", () => {
+  beforeEach(async () => {
+    await freshDb();
+    resetRateLimits();
+    jar.token = undefined;
+    jar.writes = [];
+  });
+
+  /** A kid device: a signed anonymous cookie that owns a named creature. */
+  async function kidDevice() {
+    const { token, customerId } = newCustomerToken();
+    const designId = await createDesign(customerId, "creature");
+    await applyEdits(customerId, designId, [{ name: "set_identity", input: { name: [0, 0, 0], builder: [0, 0, 32] } }], "visual");
+    return { token, customerId, designId };
+  }
+
+  it("POST /api/designs/[id]/wish takes only a sticker id and returns no money or ids", async () => {
+    const kid = await kidDevice();
+    jar.token = kid.token;
+    const { POST } = await import("@/app/api/designs/[id]/wish/route");
+    const post = (body: unknown) =>
+      POST(new Request(`http://localhost/api/designs/${kid.designId}/wish`, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } }), {
+        params: Promise.resolve({ id: kid.designId }),
+      });
+    const r = await post({ note: "together" });
+    expect(r.status).toBe(201);
+    const w = await r.json();
+    expect(Object.keys(w).sort()).toEqual(["builder", "code", "colors", "name", "note", "parts", "status"]);
+    expect(JSON.stringify({ ...w, parts: [] })).not.toMatch(/\$|cents|price|validation|customer|design/i);
+    // Opening again without a sticker keeps the one picked; free text is refused.
+    expect(await (await post({})).json()).toMatchObject({ code: w.code, note: "together" });
+    expect((await post({ note: "Buy this for Sam, 12 Elm St, 555-0100" })).status).toBe(400);
+    // Another device can't make a wish for this creature.
+    jar.token = newCustomerToken().token;
+    expect((await post({ note: "invented" })).status).toBe(404);
+  });
+
+  it("GET /api/wishes/[code]/status returns only {stage, slow}, and 404 to anyone but the owner", async () => {
+    const kid = await kidDevice();
+    const wish = await createWish(kid.customerId, kid.designId, "invented");
+    const { GET } = await import("@/app/api/wishes/[code]/status/route");
+    const get = () => GET(new Request(`http://localhost/api/wishes/${wish.code}/status`), { params: Promise.resolve({ code: wish.code }) });
+
+    jar.token = undefined;
+    expect((await get()).status).toBe(404);
+    jar.token = newCustomerToken().token;
+    expect((await get()).status).toBe(404);
+
+    // A grown-up claims and orders on their own cookie: the kid sees "Ordered!" and nothing else.
+    const adult = newCustomerToken();
+    const { designId } = await claimWish(adult.customerId, wish.code);
+    await createOrder(adult.customerId, { designId, contact: CONTACT, adultConfirmed: true });
+    jar.token = adult.token;
+    expect((await get()).status).toBe(404);
+
+    jar.token = kid.token;
+    const r = await get();
+    expect(r.status).toBe(200);
+    const body = await r.json();
+    expect(body).toEqual({ stage: "ordered", slow: false });
+    const raw = JSON.stringify(body);
+    for (const leak of [CONTACT.email, CONTACT.name, CONTACT.shipTo.line1, "2400", "24.00", designId]) expect(raw).not.toContain(leak);
+    expect(jar.writes).toEqual([]); // reading the status never sets a cookie
+  });
+
+  it("POST /api/wishes/[code]/claim creates the grown-up's cookie on demand and is idempotent", async () => {
+    const kid = await kidDevice();
+    const wish = await createWish(kid.customerId, kid.designId, "invented");
+    const { POST } = await import("@/app/api/wishes/[code]/claim/route");
+    const claim = () => POST(new Request(`http://localhost/api/wishes/${wish.code}/claim`, { method: "POST", body: "{}" }), { params: Promise.resolve({ code: wish.code }) });
+    jar.token = undefined;
+    const first = await claim();
+    expect(first.status).toBe(200);
+    expect(jar.writes).toEqual(["bl_customer"]);
+    const a = await first.json();
+    expect(a.orderId).toBeNull();
+    expect((await (await claim()).json()).designId).toBe(a.designId);
+    const unknown = await POST(new Request("http://localhost/api/wishes/AAAA2222/claim", { method: "POST" }), { params: Promise.resolve({ code: "AAAA2222" }) });
+    expect(unknown.status).toBe(404);
+  });
+
+  it("the grown-up page (age screen, then the wish) writes no cookie and stores no age", async () => {
+    const kid = await kidDevice();
+    const wish = await createWish(kid.customerId, kid.designId, "invented");
+    const { default: WishPage } = await import("@/app/w/[code]/page");
+    jar.token = undefined;
+    const before = await tableCounts();
+    const el = await WishPage({ params: Promise.resolve({ code: wish.code.replace("-", "").toLowerCase() }) });
+    expect(el).toBeTruthy();
+    expect(await tableCounts()).toEqual(before);
+    expect(jar.writes).toEqual([]);
+    // Loading the creature after the age screen marks it "seen" for the kid, and still sets no cookie.
+    const { GET } = await import("@/app/api/wishes/[code]/route");
+    expect((await GET(new Request(`http://localhost/api/wishes/${wish.code}`), { params: Promise.resolve({ code: wish.code }) })).status).toBe(200);
+    expect(jar.writes).toEqual([]);
+    const db = await getDb();
+    const audit = (await db.query<{ data: unknown }>(`SELECT data FROM audit_events`)).rows.map((r) => JSON.stringify(r.data)).join(" ");
+    expect(audit).not.toMatch(/birth|year|\bage\b/i);
+  });
+});
+
+describe("wish screens render", () => {
+  beforeEach(async () => {
+    await freshDb();
+    resetRateLimits();
+  });
+
+  const MONEY = /\$|€|£|¥|\bUSD\b|price|\bcost|\bpay\b|payment|checkout|\bcents?\b/i;
+  const text = (html: string) =>
+    html
+      .replace(/<style[\s\S]*?<\/style>/g, "")
+      .replace(/<svg[\s\S]*?<\/svg>/g, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&#x27;|&apos;|&#39;/g, "'")
+      .replace(/&amp;/g, "&")
+      .replace(/\s+/g, " ");
+
+  it("the kid's wish card shows no money, no text inputs and no error words", () => {
+    const html = renderToStaticMarkup(createElement(WishCard, { designId: crypto.randomUUID(), onClose: () => undefined }));
+    expect(html).not.toMatch(/<input\b|<textarea\b|contenteditable|<form\b/i);
+    const t = text(html);
+    expect(t).not.toMatch(MONEY);
+    expect(t).not.toMatch(/\berror\b|invalid|warning|failed|email|phone|address/i);
+    for (const s of ["Show a grown-up!", "Add a sticker", "I invented this!", "Can we build it together?", "For a special day?", "Waiting for a grown-up"]) expect(t).toContain(s);
+    // Every status line is calm and money-free; problems only ever read "Taking a little longer".
+    for (const s of Object.values(STAGE_TEXT)) expect(s.text).not.toMatch(MONEY);
+    expect(Object.values(STAGE_TEXT).map((s) => s.text)).toEqual(["Waiting for a grown-up", "A grown-up is looking", "Ordered!", "Gathering your bricks", "Packing", "On its way", "It's here!"]);
+  });
+
+  it("the grown-up page shows the fixed price, what arrives, build facts, age label and honest checks", async () => {
+    const { code } = await kidWithWish("together");
+    const data = await getWishForGrownup(code);
+    const t = text(renderToStaticMarkup(createElement(GrownupView, { data })));
+    for (const s of [
+      "Captain Fizzfang",
+      "Invented by BraveOtter42",
+      "Can we build it together?",
+      "$24.00",
+      "Fixed price, includes delivery and taxes",
+      "SIMULATION",
+      `${data.pieces} genuine new parts`,
+      "PDF booklet",
+      `about ${data.buildMinutes} minutes to build`,
+      "Suitable 6+",
+      "small parts",
+      "Every brick connects in our digital build check",
+      "Physical test build: not yet done for this design",
+      "Order these bricks",
+    ]) {
+      expect(t).toContain(s);
+    }
+    expect(t).not.toMatch(/1 of 1|only one in the world/i);
   });
 });

@@ -34,7 +34,9 @@ export default async function Orders() {
                   </td>
                   <td>{o.name}</td>
                   <td>{statusLabel(o.status)}</td>
-                  <td className="num">{o.accepted_total_cents ? formatCents(o.accepted_total_cents) : "-"}</td>
+                  <td className="num">
+                    {o.accepted_total_cents ? formatCents(o.accepted_total_cents) : o.fixed_price_cents ? <span title="Fixed price, includes delivery and taxes">{formatCents(o.fixed_price_cents)} fixed</span> : "-"}
+                  </td>
                   <td>{new Date(o.created_at).toLocaleString()}</td>
                 </tr>
               ))}

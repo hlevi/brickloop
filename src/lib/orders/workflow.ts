@@ -438,7 +438,8 @@ const captureHandler: JobHandler = async (job) => {
   if (!pay || pay.status === "captured") return;
   const confirmed = (await db.query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM supplier_orders WHERE order_id = $1 AND status = 'confirmed'`, [orderId])).rows[0];
   if (!Number(confirmed.n)) return; // only capture against confirmed procurement
-  const amount = Math.min(o.accepted_total_cents ?? pay.amount_cents, pay.amount_cents); // never more than accepted
+  // Never more than accepted, and never more than a fixed price (Creature Lab).
+  const amount = Math.min(o.accepted_total_cents ?? pay.amount_cents, pay.amount_cents, o.fixed_price_cents ?? Number.MAX_SAFE_INTEGER);
   const provider = getPaymentProvider();
   const key = `capture:${pay.id}`;
   await db.query(`INSERT INTO payment_operations(payment_id, op, idempotency_key, status, amount_cents) VALUES ($1,'capture',$2,'pending',$3) ON CONFLICT (idempotency_key) DO NOTHING`, [pay.id, key, amount]);

@@ -15,8 +15,9 @@ import { getSupplier } from "../suppliers/registry";
 import type { ShipTo } from "../suppliers/types";
 import { AppError, isUuid, uuid } from "../util";
 import type { ValidationResult } from "../validation/validate";
+import { lockClaimForOrder, markWishOrdered } from "../wishes";
 import { liveReadiness } from "./live";
-import { lockOrder, TERMINAL, transition, type OrderStatus } from "./stateMachine";
+import { lockOrder, transition, type OrderStatus } from "./stateMachine";
 
 export interface Contact {
   name: string;
@@ -142,18 +143,15 @@ export async function createOrder(customerId: string, input: { designId: string;
     await ensureCustomer(q, customerId);
     const d = await q.query<{ current_revision_id: string; template: string }>(`SELECT current_revision_id, template FROM designs WHERE id = $1 AND customer_id = $2`, [input.designId, customerId]);
     if (!d.rows[0]) throw new AppError("not_found", "Design not found", 404);
-    const revId = d.rows[0].current_revision_id;
+    let revId = d.rows[0].current_revision_id;
     let wishCode: string | null = null;
     let fixedPrice: number | null = null;
     if (isLabKit(d.rows[0].template)) {
-      // Only a grown-up's copy made by claiming a wish can be ordered; a kid's Lab design never reaches checkout.
-      const w = await q.query<{ code: string; order_id: string | null }>(`SELECT code, order_id FROM wishes WHERE claimed_design_id = $1 FOR UPDATE`, [input.designId]);
-      if (!w.rows[0]) throw new AppError("not_found", "Design not found", 404);
-      if (w.rows[0].order_id) {
-        const prev = await q.query<{ status: OrderStatus }>(`SELECT status FROM orders WHERE id = $1`, [w.rows[0].order_id]);
-        if (prev.rows[0] && !TERMINAL.includes(prev.rows[0].status)) throw new AppError("already_ordered", "These bricks are already ordered. See My orders.", 409);
-      }
-      wishCode = w.rows[0].code;
+      // Only a grown-up's copy made by claiming a wish can be ordered (a kid's Lab design never
+      // reaches checkout), only once per wish, and always the frozen copy the grown-up reviewed.
+      const claim = await lockClaimForOrder(q, input.designId);
+      revId = claim.revisionId;
+      wishCode = claim.code;
       fixedPrice = settings.creaturePriceCents;
     }
     const rev = await q.query<{ model: DesignModel; validation: ValidationResult }>(`SELECT model, validation FROM design_revisions WHERE id = $1`, [revId]);
@@ -180,7 +178,7 @@ export async function createOrder(customerId: string, input: { designId: string;
         wishCode,
       ],
     );
-    if (wishCode) await q.query(`UPDATE wishes SET status = 'ordered', order_id = $2 WHERE code = $1`, [wishCode, id]);
+    if (wishCode) await markWishOrdered(q, wishCode, id, input.designId);
     await q.query(`INSERT INTO order_status_history(order_id, from_status, to_status, reason, actor) VALUES ($1,NULL,'draft','checkout started',$2)`, [id, `customer:${customerId}`]);
     await audit(q, `customer:${customerId}`, "order.create", "order", id, { designRevisionId: revId, mode, ...(fixedPrice !== null ? { fixedPriceCents: fixedPrice } : {}) });
     await transition(q, id, "validating", "design frozen for validation", "system");
@@ -266,8 +264,8 @@ function customerFacingCause(kind: string): string {
 
 export async function listCustomerOrders(customerId: string) {
   const db = await getDb();
-  const { rows } = await db.query<{ id: string; status: string; mode: string; created_at: string; accepted_total_cents: number | null; name: string }>(
-    `SELECT o.id, o.status, o.mode, o.created_at, o.accepted_total_cents, d.name FROM orders o JOIN designs d ON d.id = o.design_id
+  const { rows } = await db.query<{ id: string; status: string; mode: string; created_at: string; accepted_total_cents: number | null; fixed_price_cents: number | null; name: string }>(
+    `SELECT o.id, o.status, o.mode, o.created_at, o.accepted_total_cents, o.fixed_price_cents, d.name FROM orders o JOIN designs d ON d.id = o.design_id
      WHERE o.customer_id = $1 ORDER BY o.created_at DESC`,
     [customerId],
   );
@@ -292,6 +290,10 @@ export async function acceptQuote(customerId: string, orderId: string, input: { 
     if (o.status !== "awaiting_acceptance") throw new AppError("invalid_state", `Order is ${o.status}; nothing to accept`, 409);
     const quote = await activeQuote(q, orderId);
     if (!quote || quote.id !== quoteId) throw new AppError("stale_quote", "This quote is no longer current. Refresh to see the latest quote.", 409);
+    // Fixed-price (Creature Lab) orders: never authorize anything other than the fixed price.
+    if (o.fixed_price_cents !== null && o.fixed_price_cents !== undefined && quote.customer_total_cents !== o.fixed_price_cents) {
+      throw new AppError("stale_quote", "This quote does not match the fixed price. Nothing was charged.", 409);
+    }
     if (new Date(quote.expires_at).getTime() <= Date.now()) {
       await q.query(`UPDATE quotes SET status = 'expired' WHERE id = $1`, [quote.id]);
       await transition(q, orderId, "quoting", "quote expired before acceptance", "system");
