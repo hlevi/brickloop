@@ -16,10 +16,12 @@ export interface CreatureCardProps {
   /** Previous stats, to show +1/-1 bubbles after a change. */
   previous?: CreatureStats | null;
   compact?: boolean;
+  /** Changes on every edit in the Lab, so the +1/-1 bubbles and pip wiggle replay each time. */
+  pulseKey?: number;
 }
 
 /** Trading card for a creature. Stats are computed from the real bricks (see lib/creature/stats). */
-export default function CreatureCard({ name, builder, stats, parts, coreColor, previous, compact }: CreatureCardProps) {
+export default function CreatureCard({ name, builder, stats, parts, coreColor, previous, compact, pulseKey = 0 }: CreatureCardProps) {
   const svg = useMemo(() => toSvg(renderIso(parts), { width: compact ? 180 : 260 }), [parts, compact]);
   const power = powerOf(coreColor);
   return (
@@ -41,12 +43,18 @@ export default function CreatureCard({ name, builder, stats, parts, coreColor, p
               <span className="cc-stat-label">
                 <span aria-hidden>{s.icon}</span> {s.label}
               </span>
-              <span className="cc-pips" aria-label={`${s.label} ${v} of 5`}>
+              <span key={delta ? `${s.key}-${pulseKey}` : s.key} className={`cc-pips${delta ? " wiggle" : ""}`} aria-label={`${s.label} ${v} of 5`}>
                 {[1, 2, 3, 4, 5].map((i) => (
                   <span key={i} className={`cc-pip${i <= v ? " on" : ""}`} />
                 ))}
               </span>
-              {delta !== 0 && <span className={`cc-delta ${delta > 0 ? "up" : "down"}`}>{delta > 0 ? `+${delta}` : delta}</span>}
+              {delta !== 0 ? (
+                <span key={`d-${pulseKey}`} className={`cc-delta ${delta > 0 ? "up" : "down"}`}>
+                  {delta > 0 ? `+${delta}` : delta}
+                </span>
+              ) : (
+                <span className="cc-delta-slot" />
+              )}
             </li>
           );
         })}

@@ -115,8 +115,27 @@
     opacity: 0;
   }
 }
+.cc-pips.wiggle {
+  animation: cc-wiggle 0.5s ease-in-out;
+}
+@keyframes cc-wiggle {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  20% {
+    transform: rotate(-4deg) scale(1.08);
+  }
+  45% {
+    transform: rotate(4deg) scale(1.08);
+  }
+  70% {
+    transform: rotate(-2deg);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .cc-delta {
+  .cc-delta,
+  .cc-pips.wiggle {
     animation: none;
   }
 }

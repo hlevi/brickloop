@@ -1,0 +1,149 @@
+/* Home page hero: a live creature on a world backdrop, one big button. */
+.hero {
+  --hero-ink: #1d1d1f;
+  display: grid;
+  gap: 18px 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  grid-template-areas:
+    "copy stage"
+    "cta stage";
+  align-items: center;
+  padding: 26px;
+  border: 4px solid var(--hero-ink);
+  border-radius: 30px;
+  background:
+    radial-gradient(rgba(255, 255, 255, 0.5) 2px, transparent 2.6px) 0 0 / 24px 24px,
+    linear-gradient(135deg, #fff4c2, #ffd9ec 55%, #d6e8ff);
+  color: var(--hero-ink);
+  box-shadow: 0 8px 0 var(--hero-ink);
+  font-family: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", system-ui, sans-serif;
+}
+.hero-copy {
+  grid-area: copy;
+  align-self: end;
+}
+.hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 4px 12px;
+  border: 3px solid var(--hero-ink);
+  border-radius: 999px;
+  background: #fff;
+  font-weight: 900;
+}
+.hero h1 {
+  margin: 0 0 10px;
+  font-size: clamp(1.9rem, 4.2vw, 3rem);
+  line-height: 1.05;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+.hero-sub {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  max-width: 34ch;
+}
+.hero-cta {
+  grid-area: cta;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+.hero-grownups {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  color: var(--hero-ink);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.hero-stage {
+  grid-area: stage;
+  position: relative;
+  height: clamp(300px, 42vw, 440px);
+  border: 4px solid var(--hero-ink);
+  border-radius: 26px;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow: 0 6px 0 var(--hero-ink);
+  touch-action: pan-y;
+}
+.hero-stage canvas {
+  touch-action: pan-y !important;
+}
+.hero-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(165deg, var(--bd0), var(--bd1));
+  transition: background 0.6s ease;
+}
+.hero-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 64px;
+}
+.hero-name {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  margin: 0;
+  padding: 6px 14px;
+  border: 3px solid var(--hero-ink);
+  border-radius: 18px 18px 18px 4px;
+  background: #fff;
+  font-weight: 700;
+  box-shadow: 0 3px 0 var(--hero-ink);
+}
+.hero-name b {
+  display: inline-block;
+  font-weight: 900;
+  animation: hero-pop 0.4s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+.home-kits-intro {
+  margin: 0;
+  max-width: 720px;
+}
+@keyframes hero-pop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@media (max-width: 760px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "copy" "stage" "cta";
+    padding: 18px;
+    gap: 16px;
+  }
+  .hero-stage {
+    height: clamp(260px, 70vw, 360px);
+  }
+  .hero-cta {
+    align-items: stretch;
+    text-align: center;
+  }
+  .hero-grownups {
+    justify-content: center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-name b {
+    animation: none;
+  }
+}
