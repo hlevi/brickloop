@@ -18,6 +18,12 @@
   font-size: 2.6rem;
   line-height: 1;
 }
+.wg-gate-lead {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
 .wg-gate .btn {
   align-self: center;
 }
@@ -111,11 +117,13 @@ select.wg-year {
   flex-direction: column;
   gap: 10px;
 }
-/* Phone: one column in reading order: creature, card, price and button, then the details. */
+/* Phone: one column in reading order: the creature, then the price and button (what a
+   parent checks first), then the kid's card and the details. */
 @media (max-width: 860px) {
   .wg-grid {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
   }
   .wg-col {
     display: contents;
@@ -123,10 +131,10 @@ select.wg-year {
   .wg-stage {
     order: 1;
   }
-  .wg-card {
+  .wg-buy {
     order: 2;
   }
-  .wg-buy {
+  .wg-card {
     order: 3;
   }
   .wg-still {
@@ -137,13 +145,40 @@ select.wg-year {
   }
 }
 .viewer.wg-viewer {
-  height: 440px;
+  height: 420px;
   border-radius: 0;
 }
 @media (max-width: 600px) {
   .viewer.wg-viewer {
-    height: 300px;
+    height: 260px;
   }
+}
+
+/* At a glance, right under the price. */
+.wg-glance {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.wg-glance li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg, #f5f4f0);
+  border: 1px solid var(--line);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.wg-promise {
+  margin: 2px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
 }
 
 .wg-buy h2 {
