@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useDeferredValue, useMemo } from "react";
 import { renderIso, toSvg } from "@/lib/instructions/iso";
 import { STAT_LABELS, type CreatureStats } from "@/lib/creature/stats";
 import { powerOf } from "@/lib/creature/words";
@@ -22,7 +22,9 @@ export interface CreatureCardProps {
 
 /** Trading card for a creature. Stats are computed from the real bricks (see lib/creature/stats). */
 export default function CreatureCard({ name, builder, stats, parts, coreColor, previous, compact, pulseKey = 0 }: CreatureCardProps) {
-  const svg = useMemo(() => toSvg(renderIso(parts), { width: compact ? 180 : 260 }), [parts, compact]);
+  // The card picture can trail a tap by a frame: the 3D creature on the stage updates first.
+  const artParts = useDeferredValue(parts);
+  const svg = useMemo(() => toSvg(renderIso(artParts), { width: compact ? 180 : 260 }), [artParts, compact]);
   const power = powerOf(coreColor);
   return (
     <article className={`creature-card${compact ? " compact" : ""}`} aria-label={`Creature card for ${name}`}>

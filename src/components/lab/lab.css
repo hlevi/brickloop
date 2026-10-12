@@ -333,8 +333,10 @@
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #ff9a9a, #e3262f 60%);
 }
-.lab-lever:hover:not(:disabled) .lab-lever-knob {
-  background: radial-gradient(circle at 35% 30%, #ffb3b3, #f03a43 60%);
+@media (hover: hover) {
+  .lab-lever:hover:not(:disabled) .lab-lever-knob {
+    background: radial-gradient(circle at 35% 30%, #ffb3b3, #f03a43 60%);
+  }
 }
 .lab-lever-label {
   margin-top: 14px;
@@ -372,8 +374,10 @@
   animation: lab-invite 3.2s ease-in-out infinite;
   transition: opacity 0.3s;
 }
-.lab-life:hover:not(:disabled) {
-  background: linear-gradient(180deg, #fff09e, #ffcb33);
+@media (hover: hover) {
+  .lab-life:hover:not(:disabled) {
+    background: linear-gradient(180deg, #fff09e, #ffcb33);
+  }
 }
 .lab-life:active:not(:disabled) {
   transform: translateX(-50%) translateY(3px);
@@ -513,8 +517,10 @@
   font-weight: 900;
   font-size: 1.2rem;
 }
-.lab-grownup:hover:not(:disabled) {
-  background: linear-gradient(180deg, #bdf6cf, #8fe5ae);
+@media (hover: hover) {
+  .lab-grownup:hover:not(:disabled) {
+    background: linear-gradient(180deg, #bdf6cf, #8fe5ae);
+  }
 }
 .lab-grownup:disabled {
   opacity: 0.6;
@@ -667,8 +673,10 @@
     transform 0.12s,
     background-color 0.12s;
 }
-.lab-tile:hover:not(:disabled):not(.on) {
-  background: #fff6d6;
+@media (hover: hover) {
+  .lab-tile:not(.world):not(.power):hover:not(:disabled):not(.on) {
+    background: #fff6d6;
+  }
 }
 .lab-tile:active:not(:disabled) {
   transform: scale(0.94);
@@ -1048,8 +1056,10 @@
   font-weight: 800;
   font-size: 0.78rem;
 }
-.lab-tab:hover:not(.on) {
-  background: #eef2ff;
+@media (hover: hover) {
+  .lab-tab:hover:not(.on) {
+    background: #eef2ff;
+  }
 }
 .lab-tab.on {
   background: var(--lab-sky);
@@ -1312,7 +1322,7 @@
   }
   35% {
     opacity: 1;
-    transform: translate(calc(var(--dx) * 0.6), -170px) rotate(calc(var(--rot) * 0.4));
+    transform: translate(calc(var(--dx) * 0.6), var(--rise, -150px)) rotate(calc(var(--rot) * 0.4));
   }
   100% {
     opacity: 0;

@@ -15,8 +15,18 @@ import { useTileImages } from "./useTileImages";
 export type Act = (calls: ToolCall[], opts?: { coalesce?: string; sound?: SoundName; pitch?: number; record?: boolean }) => boolean;
 
 export function TabBar({ tabs, active, locks, onPick }: { tabs: LabTab[]; active: string; locks: string[]; onPick: (id: string) => void }) {
+  // Arrow keys move between tabs (the usual tab-list keyboard pattern).
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const i = tabs.findIndex((t) => t.id === active);
+    const next = tabs[(i + step + tabs.length) % tabs.length];
+    onPick(next.id);
+    document.getElementById(`lab-tab-${next.id}`)?.focus();
+  };
   return (
-    <div className="lab-tabs" role="tablist" aria-label="Creature parts">
+    <div className="lab-tabs" role="tablist" aria-label="Creature parts" onKeyDown={onKeyDown}>
       {tabs.map((t) => (
         <button
           key={t.id}
@@ -24,6 +34,7 @@ export function TabBar({ tabs, active, locks, onPick }: { tabs: LabTab[]; active
           id={`lab-tab-${t.id}`}
           aria-selected={t.id === active}
           aria-controls="lab-panel"
+          tabIndex={t.id === active ? 0 : -1}
           className={`lab-tab${t.id === active ? " on" : ""}`}
           onClick={() => onPick(t.id)}
         >

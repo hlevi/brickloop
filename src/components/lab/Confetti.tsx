@@ -7,6 +7,8 @@ const COLORS = ["#ffd23f", "#ff6b6b", "#4ecdc4", "#6a8dff", "#b45cff", "#7ed957"
 interface Piece {
   id: number;
   left: number;
+  /** How high the piece flies before falling (px). */
+  rise: number;
   dx: number;
   rot: number;
   delay: number;
@@ -29,6 +31,7 @@ export default function Confetti({ burst }: { burst: number }) {
     const made = Array.from({ length: 36 }, (_, i) => ({
       id: burst * 100 + i,
       left: 30 + Math.random() * 40,
+      rise: 70 + Math.random() * 120,
       dx: (Math.random() - 0.5) * 360,
       rot: (Math.random() - 0.5) * 1080,
       delay: Math.random() * 0.15,
@@ -49,7 +52,7 @@ export default function Confetti({ burst }: { burst: number }) {
         <i
           key={p.id}
           className={p.round ? "round" : undefined}
-          style={{ left: `${p.left}%`, background: p.color, animationDelay: `${p.delay}s`, "--dx": `${p.dx}px`, "--rot": `${p.rot}deg` } as CSSProperties}
+          style={{ left: `${p.left}%`, background: p.color, animationDelay: `${p.delay}s`, "--dx": `${p.dx}px`, "--rise": `-${Math.round(p.rise)}px`, "--rot": `${p.rot}deg` } as CSSProperties}
         />
       ))}
     </div>

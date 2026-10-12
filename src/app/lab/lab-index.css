@@ -56,8 +56,10 @@
   text-decoration: none;
   transition: transform 0.1s;
 }
-.lab-index-item:hover {
-  transform: translateY(-2px) rotate(-0.6deg);
+@media (hover: hover) {
+  .lab-index-item:hover {
+    transform: translateY(-2px) rotate(-0.6deg);
+  }
 }
 .lab-index-item:active {
   transform: translateY(3px);

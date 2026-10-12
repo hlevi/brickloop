@@ -19,9 +19,11 @@
   touch-action: manipulation;
   transition: transform 0.08s, box-shadow 0.08s;
 }
-.start-hero:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 0 #1d1d1f;
+@media (hover: hover) {
+  .start-hero:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 0 #1d1d1f;
+  }
 }
 .start-hero:active:not(:disabled) {
   transform: translateY(4px);

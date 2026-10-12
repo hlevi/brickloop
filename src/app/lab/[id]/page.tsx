@@ -17,5 +17,6 @@ export default async function LabPage(props: { params: Promise<{ id: string }>; 
   const view = cid && isUuid(id) ? await getDesignView(cid, id).catch(() => null) : null;
   if (!view) notFound();
   if (!view.lab) redirect(`/design/${id}`);
-  return <CreatureLab designId={id} initial={{ params: view.params, rev: view.revision.rev, canUndo: view.revision.canUndo }} isNew={sp.new === "1"} />;
+  // Keyed by design: "New" (another creature) always starts with fresh Lab state and its own save queue.
+  return <CreatureLab key={id} designId={id} initial={{ params: view.params, rev: view.revision.rev, canUndo: view.revision.canUndo }} isNew={sp.new === "1"} />;
 }
