@@ -360,6 +360,7 @@ export function drawCardPage(page: PDFPage, c: PackContext) {
   drawCreatureCard(page, c, cardX, cardTop - CARD_H);
   const guideX = cardX + CARD_W + 36;
   drawStatGuide(page, c, guideX, cardTop, pageW - margin - guideX);
+  text(page, "Print at actual size (100%) for a standard 63 x 88 mm trading card.", cardX, cardTop - CARD_H - 13, { font: fonts.regular, size: 7.5, color: MUTED });
   drawCertificate(page, c, { x: margin, y: 44, w: pageW - 2 * margin, h: 362 });
 }
 
@@ -377,8 +378,8 @@ export function drawPowerUpStep(page: PDFPage, c: PackContext, step: BuildStep) 
   gradientRect(page, banner, 18, NIGHT_TOP, NIGHT_BOTTOM);
   const gx = banner.x + banner.w - 64;
   const gy = banner.y + banner.h / 2;
-  for (const p of scatter({ x: banner.x + 12, y: banner.y + 10, w: banner.w - 24, h: banner.h - 20 }, 22, nameSeed(info.name) ^ 0x5eed)) {
-    if (p.x < banner.x + 250 && p.y > banner.y + 22) continue; // keep the title clear
+  for (const p of scatter({ x: banner.x + 12, y: banner.y + 10, w: banner.w - 24, h: banner.h - 20 }, 30, nameSeed(info.name) ^ 0x5eed)) {
+    if (p.x < banner.x + 270) continue; // keep the title clear
     if (Math.hypot(p.x - gx, p.y - gy) < 50) continue; // and the glowing core
     sparkle(page, p.x, p.y, 2 + p.s * 3.2, p.s > 1.1 ? glow : "#ffffff", 0.9);
   }

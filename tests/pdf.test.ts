@@ -72,7 +72,7 @@ async function everything(bytes: Uint8Array): Promise<string> {
 /** Text with line breaks and runs of spaces collapsed (wrapped lines read as one). */
 const squash = (s: string) => s.replace(/\s+/g, " ");
 
-const cust = () => crypto.randomUUID();
+const cust = (): string => crypto.randomUUID();
 const NAME = "Captain Fizzfang";
 const TAG = "BraveOtter42";
 const WISH_LINE = "Make a wish, then click Captain Fizzfang's power core into place.";
@@ -85,7 +85,7 @@ function expectNoBadClaims(all: string) {
 }
 
 /** A kid invents Captain Fizzfang, a grown-up claims the wish and orders it. */
-async function creatureOrder(adult = cust()) {
+async function creatureOrder(adult: string = cust()) {
   const kid = cust();
   const designId = await createDesign(kid, "creature");
   await applyEdits(kid, designId, [{ name: "set_identity", input: { name: [0, 0, 0], builder: [0, 0, 32] } }], "visual");
