@@ -195,7 +195,8 @@
   font-size: 1.25rem;
   animation: lab-tick 0.45s ease-out;
 }
-@media (max-width: 559px) {
+/* Narrow stages (phones, landscape phones): icon-only buttons, counter under the home button. */
+@container (max-width: 560px) {
   .lab-hud.left {
     flex-direction: column;
     align-items: flex-start;
@@ -1169,7 +1170,8 @@
     gap: 28px;
   }
   .lab-card-scene {
-    width: clamp(170px, calc((100dvh - 760px) * 0.6), 230px);
+    flex: 0 0 auto;
+    width: clamp(210px, calc((100dvh - 640px) * 0.66), 260px);
   }
   .lab-side-actions {
     max-width: 280px;
