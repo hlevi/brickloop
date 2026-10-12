@@ -279,7 +279,7 @@ export async function acceptQuote(customerId: string, orderId: string, input: { 
     auth = await provider.authorize({ amountCents: prep.quote.customer_total_cents, currency: prep.quote.currency, idempotencyKey: key, method });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await db.query(`UPDATE payments SET status = 'failed', last_error = $2, updated_at = now() WHERE id = $1`, [prep.paymentId, msg]);
+    await db.query(`UPDATE payments SET status = 'failed', last_error = $2, updated_at = now() WHERE id = $1 AND status = 'pending'`, [prep.paymentId, msg]);
     await db.tx((q) => audit(q, "system", "payment.authorize_failed", "order", orderId, { error: msg }));
     if (e instanceof PaymentDeclinedError) throw new AppError("payment_declined", "Payment was declined. No charge was made. You can try another method.", 402);
     throw new AppError("payment_error", "Payment could not be authorized. No charge was made.", 502);
@@ -289,6 +289,9 @@ export async function acceptQuote(customerId: string, orderId: string, input: { 
     const o = await lockOrder(q, orderId);
     await q.query(`UPDATE payments SET status = 'authorized', provider_ref = $2, auth_expires_at = $3, updated_at = now() WHERE id = $1`, [prep.paymentId, auth.ref, auth.expiresAt]);
     if (o.status !== "awaiting_acceptance") {
+      // A repeated acceptance of the same quote shares the idempotent authorization: nothing to do.
+      const acc = await q.query<{ accepted_quote_id: string | null }>(`SELECT accepted_quote_id FROM orders WHERE id = $1`, [orderId]);
+      if (acc.rows[0]?.accepted_quote_id === prep.quote.id) return null;
       // Order moved on concurrently (e.g. canceled): release the authorization.
       await enqueue(q, "payment.void", { orderId, paymentId: prep.paymentId }, { dedupeKey: `void:${prep.paymentId}` });
       return o.status;

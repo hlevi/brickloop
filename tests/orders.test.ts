@@ -295,4 +295,33 @@ describe("order workflow (simulation)", () => {
     const [ex] = await openExceptions(orderId);
     await expect(resolveException({ exceptionId: ex.id, action: "approve_refund" }, "admin")).rejects.toThrow(/not available/);
   });
+
+  it("treats a double-submitted acceptance idempotently (one authorization, one purchase)", async () => {
+    const { customer, orderId, quote } = await orderAwaitingAcceptance();
+    const results = await Promise.allSettled([
+      acceptQuote(customer, orderId, { quoteId: quote.id, paymentMethod: "sim_ok" }),
+      acceptQuote(customer, orderId, { quoteId: quote.id, paymentMethod: "sim_ok" }),
+    ]);
+    expect(results.some((r) => r.status === "fulfilled")).toBe(true);
+    await runAll();
+    const db = await getDb();
+    expect((await db.query(`SELECT * FROM payments WHERE order_id = $1`, [orderId])).rows).toHaveLength(1);
+    expect((await db.query(`SELECT * FROM sim_payments`)).rows).toHaveLength(1);
+    expect((await db.query(`SELECT * FROM supplier_orders WHERE order_id = $1`, [orderId])).rows).toHaveLength(1);
+  });
+
+  it("flags delivery delays without blocking the order and sends a digest", async () => {
+    const { customer, orderId, quote } = await orderAwaitingAcceptance();
+    await acceptQuote(customer, orderId, { quoteId: quote.id, paymentMethod: "sim_ok" });
+    await runAll(4);
+    const db = await getDb();
+    await db.query(`UPDATE orders SET estimated_delivery_at = now() - interval '10 days' WHERE id = $1`, [orderId]);
+    const { enqueue } = await import("@/lib/jobs/queue");
+    await enqueue(db, "system.sweep", {}, { dedupeKey: "sweep:test" });
+    await runAll(3);
+    const ex = await openExceptions(orderId);
+    expect(ex.map((e) => e.kind)).toContain("delivery_delayed");
+    expect(["purchased", "shipped"]).toContain(await orderStatus(orderId));
+    expect((await db.query(`SELECT * FROM notifications WHERE kind = 'digest'`)).rows.length).toBe(1);
+  });
 });

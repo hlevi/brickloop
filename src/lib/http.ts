@@ -1,0 +1,80 @@
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
+import { ADMIN_COOKIE, CUSTOMER_COOKIE, customerIdFromToken, isAdminToken, newCustomerToken } from "./auth/session";
+import { log } from "./redact";
+import { AppError } from "./util";
+
+const COOKIE_OPTS = { httpOnly: true, sameSite: "lax" as const, secure: process.env.NODE_ENV === "production", path: "/" };
+
+/** Anonymous customer identity (signed cookie). Optionally created on first write. */
+export async function getCustomerId(create = false): Promise<string | null> {
+  const jar = await cookies();
+  const existing = customerIdFromToken(jar.get(CUSTOMER_COOKIE)?.value);
+  if (existing || !create) return existing;
+  const { token, customerId } = newCustomerToken();
+  jar.set(CUSTOMER_COOKIE, token, { ...COOKIE_OPTS, maxAge: 60 * 60 * 24 * 365 });
+  return customerId;
+}
+
+export async function requireCustomerId(): Promise<string> {
+  const id = await getCustomerId(false);
+  if (!id) throw new AppError("not_found", "Not found", 404);
+  return id;
+}
+
+export async function isAdmin(): Promise<boolean> {
+  const jar = await cookies();
+  return isAdminToken(jar.get(ADMIN_COOKIE)?.value);
+}
+
+export async function requireAdmin(): Promise<string> {
+  if (!(await isAdmin())) throw new AppError("unauthorized", "Admin login required", 401);
+  return "admin";
+}
+
+export async function setAdminCookie(token: string | null) {
+  const jar = await cookies();
+  if (token) jar.set(ADMIN_COOKIE, token, { ...COOKIE_OPTS, sameSite: "strict", maxAge: 60 * 60 * 12 });
+  else jar.delete(ADMIN_COOKIE);
+}
+
+/** Wrap a route handler: AppErrors map to JSON errors; anything else is a logged 500 without internals. */
+export function route<A extends unknown[]>(fn: (...args: A) => Promise<Response>) {
+  return async (...args: A): Promise<Response> => {
+    try {
+      return await fn(...args);
+    } catch (e) {
+      if (e instanceof AppError) return NextResponse.json({ error: e.code, message: e.message }, { status: e.status });
+      log.warn(`unhandled route error: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
+      return NextResponse.json({ error: "internal", message: "Something went wrong" }, { status: 500 });
+    }
+  };
+}
+
+export async function readJson(req: Request, maxBytes = 64 * 1024): Promise<Record<string, unknown>> {
+  const text = await req.text();
+  if (text.length > maxBytes) throw new AppError("too_large", "Request body too large", 413);
+  if (!text) return {};
+  try {
+    const v = JSON.parse(text);
+    if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error();
+    return v;
+  } catch {
+    throw new AppError("bad_json", "Invalid JSON body");
+  }
+}
+
+/** Reject cross-site form posts for state-changing requests (defense in depth beyond SameSite cookies). */
+export function assertSameOrigin(req: Request) {
+  const origin = req.headers.get("origin");
+  if (!origin) return;
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  try {
+    if (new URL(origin).host !== host) throw new AppError("bad_origin", "Cross-origin request rejected", 403);
+  } catch (e) {
+    if (e instanceof AppError) throw e;
+    throw new AppError("bad_origin", "Cross-origin request rejected", 403);
+  }
+}
+
+export type Ctx<P extends string = "id"> = { params: Promise<Record<P, string>> };

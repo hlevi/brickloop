@@ -22,6 +22,7 @@ import {
   type SupplierQuote,
 } from "../suppliers/types";
 import { uuid } from "../util";
+import { formatCents as usd } from "../format";
 import { physicallyValidatedKeys } from "../validation/physical";
 import { validateModel } from "../validation/validate";
 import { getOrderRow, notifyCustomer, type OrderRow, type QuoteRow } from "./service";
@@ -186,7 +187,7 @@ const quoteHandler: JobHandler = async (job) => {
       await raiseException(q, {
         orderId,
         kind: "limit_exceeded",
-        cause: `Supplier cost ${quote.supplier_total_cents}c exceeds the per-order limit ${s.maxOrderSupplierCents}c.`,
+        cause: `Supplier cost ${usd(quote.supplier_total_cents)} exceeds the per-order limit ${usd(s.maxOrderSupplierCents)}.`,
         evidence: { quoteId: quote.id, supplierTotal: quote.supplier_total_cents, limit: s.maxOrderSupplierCents },
         actions: ["retry_quote", "cancel_and_release"],
       });
@@ -196,7 +197,7 @@ const quoteHandler: JobHandler = async (job) => {
       await raiseException(q, {
         orderId,
         kind: "contribution_below_minimum",
-        cause: `Contribution ${quote.contribution_cents}c is below the minimum ${s.minContributionCents}c.`,
+        cause: `Contribution ${usd(quote.contribution_cents)} is below the minimum ${usd(s.minContributionCents)}.`,
         evidence: { quoteId: quote.id, contribution: quote.contribution_cents },
         actions: ["retry_quote", "cancel_and_release"],
       });
@@ -265,14 +266,14 @@ const procureHandler: JobHandler = async (job) => {
       await raiseException(q, {
         orderId,
         kind: "quote_changed",
-        cause: `Supplier cost rose from ${accepted.supplier_total_cents}c to ${recheck.totalCents}c after acceptance. The customer will not be charged more without a new acceptance.`,
+        cause: `Supplier cost rose from ${usd(accepted.supplier_total_cents)} to ${usd(recheck.totalCents)} after acceptance. The customer will not be charged more without a new acceptance.`,
         evidence: { acceptedQuoteId: accepted.id, recheckQuoteId: rq.id, accepted: accepted.supplier_total_cents, now: recheck.totalCents },
         actions: ["offer_revised_quote", "cancel_and_release", "retry_procurement"],
       });
       return { go: false as const };
     }
     if (recheck.totalCents > s.maxOrderSupplierCents) {
-      await raiseException(q, { orderId, kind: "limit_exceeded", cause: `Supplier cost ${recheck.totalCents}c exceeds per-order limit ${s.maxOrderSupplierCents}c`, evidence: { limit: s.maxOrderSupplierCents }, actions: ["retry_procurement", "cancel_and_release"] });
+      await raiseException(q, { orderId, kind: "limit_exceeded", cause: `Supplier cost ${usd(recheck.totalCents)} exceeds per-order limit ${usd(s.maxOrderSupplierCents)}`, evidence: { limit: s.maxOrderSupplierCents }, actions: ["retry_procurement", "cancel_and_release"] });
       return { go: false as const };
     }
     const spent = await dailySpend(q);
@@ -280,7 +281,7 @@ const procureHandler: JobHandler = async (job) => {
       await raiseException(q, {
         orderId,
         kind: "limit_exceeded",
-        cause: `Daily supplier spend would reach ${spent + recheck.totalCents}c (limit ${s.dailySpendLimitCents}c).`,
+        cause: `Daily supplier spend would reach ${usd(spent + recheck.totalCents)} (limit ${usd(s.dailySpendLimitCents)}).`,
         evidence: { spentToday: spent, limit: s.dailySpendLimitCents },
         actions: ["retry_procurement", "cancel_and_release"],
       });

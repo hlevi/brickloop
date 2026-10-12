@@ -30,13 +30,13 @@ export class SimulatedPaymentProvider implements PaymentProvider {
     });
     const ref = `SIMPAY-${crypto.randomUUID().slice(0, 12)}`;
     const expiresAt = new Date(Date.now() + this.authWindowHours * 3600_000).toISOString();
-    await db.query(`INSERT INTO sim_payments(ref, idempotency_key, amount_cents, status, expires_at) VALUES ($1,$2,$3,$4,$5)`, [
-      ref,
-      req.idempotencyKey,
-      req.amountCents,
-      declined ? "declined" : req.method === "sim_capture_fail" ? "authorized_capture_fail" : "authorized",
-      expiresAt,
-    ]);
+    const ins = await db.query<{ ref: string }>(
+      `INSERT INTO sim_payments(ref, idempotency_key, amount_cents, status, expires_at) VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (idempotency_key) DO NOTHING RETURNING ref`,
+      [ref, req.idempotencyKey, req.amountCents, declined ? "declined" : req.method === "sim_capture_fail" ? "authorized_capture_fail" : "authorized", expiresAt],
+    );
+    // A concurrent request with the same key won the insert: return its result.
+    if (!ins.rows[0]) return this.authorize(req);
     if (declined) throw new PaymentDeclinedError("Card declined (simulated)");
     return { ref, amountCents: req.amountCents, expiresAt };
   }
