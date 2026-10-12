@@ -19,6 +19,8 @@ export interface OperatingSettings {
   deliveryGraceDays: number;
   /** Fraction of the authorization window after which an un-captured auth is escalated. */
   authEscalateAfterHours: number;
+  /** Creature Lab: one fixed price per creature, including delivery and taxes (shown only to grown-ups). */
+  creaturePriceCents: number;
 }
 
 export const DEFAULT_SETTINGS: OperatingSettings = {
@@ -34,6 +36,7 @@ export const DEFAULT_SETTINGS: OperatingSettings = {
   digestIntervalHours: 24,
   deliveryGraceDays: 3,
   authEscalateAfterHours: 120,
+  creaturePriceCents: 2400,
 };
 
 export interface SimulatorSettings {
@@ -80,6 +83,7 @@ function validateSettings(s: OperatingSettings) {
     "digestIntervalHours",
     "deliveryGraceDays",
     "authEscalateAfterHours",
+    "creaturePriceCents",
   ];
   for (const k of nonNeg) {
     const v = s[k];
@@ -87,6 +91,9 @@ function validateSettings(s: OperatingSettings) {
   }
   if (s.maxProcurementAttempts < 1 || s.maxProcurementAttempts > 10) throw new AppError("invalid_setting", "maxProcurementAttempts must be 1-10");
   if (s.quoteTtlMinutes < 1) throw new AppError("invalid_setting", "quoteTtlMinutes must be at least 1");
+  if (!Number.isInteger(s.creaturePriceCents) || s.creaturePriceCents < 100 || s.creaturePriceCents > 100000) {
+    throw new AppError("invalid_setting", "creaturePriceCents must be a whole number of cents from 100 to 100000");
+  }
   if (!["N", "U"].includes(s.condition)) throw new AppError("invalid_setting", "condition must be N or U");
   if (typeof s.purchasingPaused !== "boolean") throw new AppError("invalid_setting", "purchasingPaused must be boolean");
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { renderIso, toSvg } from "@/lib/instructions/iso";
+import { renderBuilder, renderName } from "@/lib/creature/words";
 import { formatCents, statusLabel } from "@/lib/format";
 import type { CustomerOrderView, QuoteRow } from "@/lib/orders/service";
 import type { EnvironmentalReport } from "@/lib/environment";
@@ -51,6 +52,9 @@ export default function OrderView({ orderId }: { orderId: string }) {
   if (!data) return <p className="muted">Loading order...</p>;
   const o = data.order;
   const sim = o.mode === "simulated";
+  // Creature Lab orders carry one fixed price (incl. delivery and taxes) and the creature's generated name.
+  const fixed = o.fixed_price_cents !== null && o.fixed_price_cents !== undefined;
+  const identity = data.model.params.identity;
   const act = async (path: string, body: unknown) => {
     setBusy(true);
     setActionErr(null);
@@ -66,9 +70,18 @@ export default function OrderView({ orderId }: { orderId: string }) {
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>
-          Order <span className="mono">{o.id.slice(0, 8)}</span>
-        </h1>
+        {fixed && identity ? (
+          <div>
+            <h1 style={{ margin: 0 }}>{renderName(identity)}</h1>
+            <p className="small muted" style={{ margin: 0 }}>
+              Invented by <strong>{renderBuilder(identity)}</strong> &middot; order <span className="mono">{o.id.slice(0, 8)}</span>
+            </p>
+          </div>
+        ) : (
+          <h1 style={{ margin: 0 }}>
+            Order <span className="mono">{o.id.slice(0, 8)}</span>
+          </h1>
+        )}
         <div className="row">
           {sim && <span className="badge sim">SIMULATED ORDER</span>}
           <span className="badge info">{statusLabel(o.status)}</span>
@@ -95,9 +108,18 @@ export default function OrderView({ orderId }: { orderId: string }) {
       <div className="editor">
         <div className="stack">
           {o.status === "awaiting_acceptance" && data.quote && (
-            <QuoteBox quote={data.quote} sim={sim} budget={o.budget_cents} method={method} setMethod={setMethod} busy={busy} onAccept={() => act("accept", { quoteId: data.quote!.id, paymentMethod: method })} />
+            <QuoteBox quote={data.quote} sim={sim} fixed={fixed} budget={o.budget_cents} method={method} setMethod={setMethod} busy={busy} onAccept={() => act("accept", { quoteId: data.quote!.id, paymentMethod: method })} />
           )}
-          {data.acceptedQuote && o.status !== "awaiting_acceptance" && <QuoteTable quote={data.acceptedQuote} title="Accepted quote" />}
+          {fixed && !data.acceptedQuote && o.status !== "awaiting_acceptance" && !["canceled", "refunded"].includes(o.status) && (
+            <section className="panel">
+              <p style={{ margin: 0, fontSize: "1.6rem", fontWeight: 900 }}>{formatCents(o.fixed_price_cents!)}</p>
+              <p style={{ margin: 0, fontWeight: 700 }}>Fixed price, includes delivery and taxes</p>
+              <p className="small muted" style={{ marginBottom: 0 }}>
+                We confirm the exact parts with the supplier before asking you to accept this price. {sim && <span className="badge sim">SIMULATION</span>}
+              </p>
+            </section>
+          )}
+          {data.acceptedQuote && o.status !== "awaiting_acceptance" && <QuoteTable quote={data.acceptedQuote} title="Accepted quote" fixed={fixed} />}
           {actionErr && <p className="error">{actionErr}</p>}
           {data.payment && (
             <section className="panel small">
@@ -169,7 +191,7 @@ export default function OrderView({ orderId }: { orderId: string }) {
   );
 }
 
-function QuoteTable({ quote, title }: { quote: QuoteRow; title: string }) {
+function QuoteTable({ quote, title, fixed = false }: { quote: QuoteRow; title: string; fixed?: boolean }) {
   return (
     <section className="panel">
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -203,11 +225,16 @@ function QuoteTable({ quote, title }: { quote: QuoteRow; title: string }) {
             <td>{formatCents(quote.service_fee_cents)}</td>
           </tr>
           <tr className="total">
-            <td>Total</td>
+            <td>{fixed ? "Fixed price, includes delivery and taxes" : "Total"}</td>
             <td>{formatCents(quote.customer_total_cents)}</td>
           </tr>
         </tbody>
       </table>
+      {fixed && (
+        <p className="small muted" style={{ margin: "8px 0 0" }}>
+          One fixed price for every creature. The lines above show what the supplier charges for the exact parts, shipping and taxes; your price stays the same.
+        </p>
+      )}
       <p className="small muted" style={{ marginBottom: 0 }}>
         Delivery in {quote.delivery_days_min}-{quote.delivery_days_max} days after purchase. Quote valid until {new Date(quote.expires_at).toLocaleString()}.
       </p>
@@ -215,12 +242,12 @@ function QuoteTable({ quote, title }: { quote: QuoteRow; title: string }) {
   );
 }
 
-function QuoteBox(props: { quote: QuoteRow; sim: boolean; budget: number | null; method: string; setMethod: (m: string) => void; busy: boolean; onAccept: () => void }) {
-  const { quote, sim, budget } = props;
+function QuoteBox(props: { quote: QuoteRow; sim: boolean; fixed: boolean; budget: number | null; method: string; setMethod: (m: string) => void; busy: boolean; onAccept: () => void }) {
+  const { quote, sim, budget, fixed } = props;
   const expired = new Date(quote.expires_at).getTime() < Date.now();
   return (
     <div className="stack">
-      <QuoteTable quote={quote} title="Your confirmed quote" />
+      <QuoteTable quote={quote} title="Your confirmed quote" fixed={fixed} />
       {budget !== null && quote.customer_total_cents > budget && (
         <p className="notice small">This quote is above your budget of {formatCents(budget)}. You can go back to the design and use the budget suggestions.</p>
       )}
@@ -241,7 +268,7 @@ function QuoteBox(props: { quote: QuoteRow; sim: boolean; budget: number | null;
           </div>
         )}
         <button className="btn primary" disabled={props.busy || expired} onClick={props.onAccept}>
-          {expired ? "Quote expired" : `Accept ${formatCents(quote.customer_total_cents)}`}
+          {expired ? "Quote expired" : fixed ? `Accept fixed price ${formatCents(quote.customer_total_cents)}` : `Accept ${formatCents(quote.customer_total_cents)}`}
         </button>
       </section>
     </div>

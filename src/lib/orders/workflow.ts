@@ -59,9 +59,16 @@ export function verifyQuoteAgainstBom(o: OrderRow, quote: SupplierQuote, conditi
   return [...new Set(issues)];
 }
 
+/**
+ * Store a supplier quote with our pricing. Fixed-price orders (Creature Lab) always
+ * quote exactly the fixed price: the service fee is what is left after the supplier
+ * total, so supplier drift lowers the contribution (and trips the existing
+ * contribution and limit checks) instead of ever raising what the customer pays.
+ */
 async function storeQuote(q: Queryable, o: OrderRow, sq: SupplierQuote, purpose: "initial" | "recheck" | "revised", s: OperatingSettings, issues: string[]): Promise<QuoteRow> {
-  const fee = serviceFee(sq.totalCents, s);
-  const customerTotal = sq.totalCents + fee;
+  const fixed = o.fixed_price_cents;
+  const customerTotal = fixed !== null && fixed !== undefined ? fixed : sq.totalCents + serviceFee(sq.totalCents, s);
+  const fee = customerTotal - sq.totalCents;
   const payFee = paymentFeeEstimate(customerTotal);
   const id = uuid();
   const status = purpose === "recheck" ? "superseded" : issues.length ? "rejected" : "active";
