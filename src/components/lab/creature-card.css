@@ -96,7 +96,8 @@
   color: #237841;
 }
 .cc-delta.down {
-  color: #b3261e;
+  /* A stat going down is a trade-off, not a failure: calm blue, never red. */
+  color: #2f5fb3;
 }
 .cc-foot {
   font-size: 0.75rem;

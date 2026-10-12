@@ -249,7 +249,7 @@ function AliveViewer({ parts, assembleKey = 0, onAssembled, onPartRevealed }: Br
   const [reduced] = useState(prefersReducedMotion);
   const bounds = useMemo(() => aliveBounds(parts), [parts]);
   return (
-    <Canvas shadows="percentage" camera={{ position: [18, 16, -28], fov: 34 }} dpr={[1, 2]} gl={{ alpha: true, antialias: true }}>
+    <Canvas shadows="percentage" camera={{ position: [7, 18, -31], fov: 34 }} dpr={[1, 2]} gl={{ alpha: true, antialias: true }}>
       <hemisphereLight args={["#ffffff", "#b9a98f", 0.9]} />
       <ambientLight intensity={0.35} />
       <directionalLight
@@ -272,6 +272,25 @@ function AliveViewer({ parts, assembleKey = 0, onAssembled, onPartRevealed }: Br
   );
 }
 
+let glow: THREE.Texture | null = null;
+/** Soft round glow (drawn once on a canvas, no image files) for the power core's halo. */
+function glowTexture(): THREE.Texture {
+  if (glow) return glow;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const g = c.getContext("2d");
+  if (g) {
+    const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grd.addColorStop(0, "rgba(255,255,255,1)");
+    grd.addColorStop(0.3, "rgba(255,255,255,0.55)");
+    grd.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 64, 64);
+  }
+  glow = new THREE.CanvasTexture(c);
+  return glow;
+}
+
 /** Keeps the whole creature in frame at any stage size, easing when its size changes. */
 function FitCamera({ radius }: { radius: number }) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
@@ -281,7 +300,8 @@ function FitCamera({ radius }: { radius: number }) {
     const vfov = (camera.fov * Math.PI) / 180;
     const aspect = size.width / Math.max(1, size.height);
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect);
-    const want = radius / Math.sin(Math.min(vfov, hfov) / 2);
+    // Narrow (phone) stages keep a little extra room at the sides for the Shuffle lever.
+    const want = (radius / Math.sin(Math.min(vfov, hfov) / 2)) * (aspect < 1 ? 1.12 : 1);
     const len = camera.position.length() || 1;
     const next = first.current ? want : len + (want - len) * (1 - Math.exp(-dt * 5));
     first.current = false;
@@ -344,6 +364,7 @@ function AliveCreature({
   const offset = useRef<THREE.Group>(null);
   const blink = useRef<THREE.Group>(null);
   const coreLight = useRef<THREE.PointLight>(null);
+  const coreHalo = useRef<THREE.Sprite>(null);
   const meshes = useRef(new Map<string, THREE.Mesh>()).current;
   const tweens = useRef(new Map<string, Tween>()).current;
   const prevKeys = useRef<Set<string> | null>(null);
@@ -522,7 +543,14 @@ function AliveCreature({
       const mat = m?.material as THREE.MeshStandardMaterial | undefined;
       const pulse = reduced ? 0.6 : 0.5 + 0.4 * Math.sin(3 * t);
       if (mat) mat.emissiveIntensity = pulse;
-      if (coreLight.current) coreLight.current.intensity = m?.visible === false ? 0 : 6 * pulse;
+      const lit = m?.visible !== false;
+      if (coreLight.current) coreLight.current.intensity = lit ? 6 * pulse : 0;
+      const halo = coreHalo.current;
+      if (halo) {
+        halo.visible = lit;
+        halo.scale.setScalar(2.2 + 1.1 * pulse);
+        (halo.material as THREE.SpriteMaterial).opacity = 0.35 + 0.5 * pulse;
+      }
     }
   });
 
@@ -549,6 +577,11 @@ function AliveCreature({
               ))}
           </group>
           {core && <pointLight ref={coreLight} position={[core.x + 0.5, core.y * PLATE + 0.9, core.z + 0.5]} color={coreHex} intensity={3} distance={7} decay={1.6} />}
+          {core && (
+            <sprite ref={coreHalo} position={[core.x + 0.5, core.y * PLATE + 0.7, core.z + 0.5]} scale={[2.8, 2.8, 1]}>
+              <spriteMaterial map={glowTexture()} color={coreHex} transparent depthWrite={false} blending={THREE.AdditiveBlending} opacity={0.6} toneMapped={false} />
+            </sprite>
+          )}
         </group>
       </group>
     </group>

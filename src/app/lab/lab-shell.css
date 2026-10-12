@@ -5,3 +5,15 @@ body:has(.lab-shell) .topbar .nav {
 body:has(.lab-shell) .container {
   padding-top: 8px;
 }
+/* The toy screen itself is full-screen: its own floating home button replaces the top bar. */
+body:has(.lab) .topbar {
+  display: none;
+}
+/* The simulation label stays on every page; on phones it is set smaller so the toy gets the room. */
+@media (max-width: 599px) {
+  body:has(.lab) .sim-banner {
+    padding: 4px 10px;
+    font-size: 0.7rem;
+    line-height: 1.35;
+  }
+}

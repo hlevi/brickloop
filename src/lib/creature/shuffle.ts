@@ -100,6 +100,33 @@ export function shuffleCalls(kit: Pick<KitDef, "options">, params: DesignParams,
   return calls;
 }
 
+/**
+ * Most tool calls POST /api/designs/[id]/edit accepts in one request (one
+ * revision). Larger batches are split by the EditQueue into several revisions.
+ */
+export const EDIT_BATCH_MAX = 10;
+
+/**
+ * The starter creature for a brand-new design: random shape, world palette, name
+ * and builder tag, kept to one edit request so the design has exactly two
+ * revisions (template default + starter). Every slot gets a uniformly random
+ * value (it may keep the default); when the world palette leaves too little room,
+ * a few random slots simply keep their default value.
+ */
+export function starterCalls(kit: Pick<KitDef, "options">, params: DesignParams, rnd: Rng = Math.random, maxCalls = EDIT_BATCH_MAX): ToolCall[] {
+  const world = WORLDS[randomInt(WORLDS.length, rnd)];
+  const colors = worldCalls(world, params.colors);
+  const identity = identityCall(randomIdentity(rnd));
+  const options: ToolCall[] = [];
+  for (const o of kit.options) {
+    const value = o.values[randomInt(o.values.length, rnd)].id;
+    if (value !== (params.options[o.id] ?? o.default)) options.push({ name: "set_option", input: { option: o.id, value } });
+  }
+  const room = Math.max(0, maxCalls - colors.length - 1);
+  while (options.length > room) options.splice(randomInt(options.length, rnd), 1);
+  return [...options, ...colors, identity];
+}
+
 /** Step a reel index by +1/-1 with wrap-around (reels spin forever in both directions). */
 export function spinIndex(index: number, delta: number, size: number): number {
   return (((index + delta) % size) + size) % size;

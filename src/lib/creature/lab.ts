@@ -6,8 +6,18 @@
 import type { ColorId } from "../catalog/colors";
 import type { KitDef } from "../model/templates/types";
 import { buildModel, defaultParams } from "../model/templates";
-import type { DesignModel, DesignParams, PlacedPart } from "../model/types";
+import type { BuildStep, DesignModel, DesignParams, PlacedPart } from "../model/types";
 import { COLORS_LOCK } from "./shuffle";
+import { STAT_LABELS, type CreatureStats } from "./stats";
+import { WORLDS } from "./worlds";
+
+/**
+ * Screens where the stage, tiles, tab bar and card all fit without scrolling
+ * (tablet landscape and desktop, plus tall portrait tablets). Keep in sync with
+ * the "fit" media queries in components/lab/lab.css. Everywhere else (phones)
+ * the card sits below the stage and the tab bar is pinned to the bottom.
+ */
+export const FIT_QUERY = "(min-width: 900px) and (min-height: 560px), (min-width: 600px) and (max-width: 899px) and (min-height: 860px)";
 
 export type LabTabKind = "slot" | "colors" | "power" | "name";
 
@@ -135,6 +145,41 @@ export function labModel(params: DesignParams): DesignModel {
 export function easeOutBack(u: number, overshoot = 1.70158): number {
   const t = Math.min(1, Math.max(0, u)) - 1;
   return 1 + (overshoot + 1) * t * t * t + overshoot * t * t;
+}
+
+/**
+ * Every tile picture the Lab can show for this creature: each structural choice
+ * (the creature with that one part swapped) and each world palette. Used to
+ * pre-render the tabs that are not open yet.
+ */
+export function tileJobs(kit: Pick<KitDef, "options">, params: DesignParams): { id: string; params: DesignParams }[] {
+  const out: { id: string; params: DesignParams }[] = [];
+  for (const o of kit.options) for (const v of o.values) out.push({ id: `${o.id}:${v.id}`, params: { ...params, options: { ...params.options, [o.id]: v.id } } });
+  for (const w of WORLDS) out.push({ id: `world:${w.id}`, params: { ...params, colors: { ...params.colors, ...w.colors } } });
+  return out;
+}
+
+export interface StatChange {
+  key: (typeof STAT_LABELS)[number]["key"];
+  label: string;
+  icon: string;
+  delta: number;
+}
+
+/** Which card stats moved after an edit (in card order), for the "+2 Zoom" pop-ups on the stage. */
+export function statChanges(prev: CreatureStats | null | undefined, next: CreatureStats): StatChange[] {
+  if (!prev) return [];
+  return STAT_LABELS.filter((s) => next[s.key] !== prev[s.key]).map((s) => ({ key: s.key, label: s.label, icon: s.icon, delta: next[s.key] - prev[s.key] }));
+}
+
+/**
+ * Caption shown while a brick of `step` lands during the reveal: the real booklet
+ * step title, so the show is an honest preview of building it at home.
+ */
+export function revealCaption(steps: Pick<BuildStep, "index" | "title">[], step: number): { n: number; total: number; title: string } | null {
+  const i = steps.findIndex((s) => s.index === step);
+  if (i < 0) return null;
+  return { n: i + 1, total: steps.length, title: steps[i].title };
 }
 
 /**

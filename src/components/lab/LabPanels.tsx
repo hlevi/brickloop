@@ -214,45 +214,61 @@ const REELS = [
   { words: ENDINGS as readonly string[], label: "Ending" },
 ];
 
+/**
+ * One word reel, slot-machine style: the whole reel is one big button. A tap
+ * spins it to the next word; a swipe down (or the up arrow key) spins it back.
+ */
 function Reel({ words, index, label, onSpin, disabled }: { words: readonly string[]; index: number; label: string; onSpin: (d: number) => void; disabled: boolean }) {
-  const [dir, setDir] = useState<"up" | "down">("down");
+  const [dir, setDir] = useState<"next" | "prev">("next");
+  const swipe = useRef<{ y: number; used: boolean } | null>(null);
   const n = words.length;
+  const spin = (d: number) => {
+    setDir(d > 0 ? "next" : "prev");
+    onSpin(d);
+  };
   return (
-    <div className="lab-reel" role="group" aria-label={label}>
-      <button
-        className="lab-reel-btn"
-        aria-label={`${label}: spin up`}
-        disabled={disabled}
-        onClick={() => {
-          setDir("up");
-          onSpin(-1);
-        }}
-      >
-        ▲
-      </button>
-      <div className="lab-reel-window">
-        <span className="lab-reel-ghost" aria-hidden>
-          {words[spinIndex(index, -1, n)]}
-        </span>
-        <span key={index} className={`lab-reel-word ${dir}`} aria-live="polite">
-          {words[index]}
-        </span>
-        <span className="lab-reel-ghost" aria-hidden>
-          {words[spinIndex(index, 1, n)]}
-        </span>
-      </div>
-      <button
-        className="lab-reel-btn"
-        aria-label={`${label}: spin down`}
-        disabled={disabled}
-        onClick={() => {
-          setDir("down");
-          onSpin(1);
-        }}
-      >
-        ▼
-      </button>
-    </div>
+    <button
+      className="lab-reel"
+      aria-label={`${label}: ${words[index]}. Tap to spin.`}
+      disabled={disabled}
+      onPointerDown={(e) => {
+        swipe.current = { y: e.clientY, used: false };
+      }}
+      onPointerMove={(e) => {
+        const s = swipe.current;
+        if (!s || s.used || (e.pointerType === "mouse" && e.buttons === 0)) return;
+        const dy = e.clientY - s.y;
+        if (Math.abs(dy) > 18) {
+          s.used = true;
+          spin(dy > 0 ? -1 : 1);
+        }
+      }}
+      onPointerCancel={() => {
+        swipe.current = null;
+      }}
+      onClick={() => {
+        const s = swipe.current;
+        swipe.current = null;
+        if (s?.used) return;
+        spin(1);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          e.preventDefault();
+          spin(e.key === "ArrowDown" ? 1 : -1);
+        }
+      }}
+    >
+      <span className="lab-reel-ghost" aria-hidden>
+        {words[spinIndex(index, -1, n)]}
+      </span>
+      <span key={index} className={`lab-reel-word ${dir}`}>
+        {words[index]}
+      </span>
+      <span className="lab-reel-ghost" aria-hidden>
+        {words[spinIndex(index, 1, n)]}
+      </span>
+    </button>
   );
 }
 
@@ -314,9 +330,9 @@ export function NamePanel({ designId, params, act, disabled, reducedMotion }: { 
           <span className="lab-dice-label">Roll</span>
         </button>
       </div>
-      <div className="lab-builders" role="group" aria-label="Builder tag">
-        <span className="lab-builders-label">
-          <span aria-hidden>✍️</span> Invented by
+      <div className="lab-builders" role="group" aria-label="Invented by: pick your builder tag">
+        <span className="lab-builders-label" aria-hidden>
+          ✍️<span className="lab-builders-words"> Invented by</span>
         </span>
         {choices.map((b) => {
           const on = sameBuilder(b, identity.builder);
@@ -339,7 +355,8 @@ export function NamePanel({ designId, params, act, disabled, reducedMotion }: { 
           onClick={() => {
             const r = round + 1;
             setRound(r);
-            setChoices(builderChoices(undefined, seededRng(seedBase + 1 + r * 7919)));
+            // Keep the current tag first (still picked), then two fresh ones.
+            setChoices(builderChoices(identity.builder, seededRng(seedBase + 1 + r * 7919)));
           }}
         >
           <span aria-hidden>🔄</span> More
