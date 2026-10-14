@@ -31,22 +31,25 @@ export interface ComponentDef {
   allowedColors: ColorId[];
 }
 
-/**
- * Creature identity chosen from curated word lists (indices only; never free text).
- * name = [title, word, ending], builder = [adjective, animal, number index].
- */
-export interface CreatureIdentity {
-  name: [number, number, number];
-  builder: [number, number, number];
+/** The greeting card a design belongs to: which catalog card, and its cover. */
+export interface CardParams {
+  /** Catalog card id (src/lib/cards). */
+  cardId: string;
+  /** Cover headline, e.g. "Happy Birthday". Short free text from an adult purchaser. */
+  headline: string;
+  /** Cover theme id (src/lib/cards/themes.ts). */
+  theme: string;
 }
 
-/** Bounded customization: a color per component and a value per option. */
+/** Bounded customization: a color per component and a value per option, plus mosaic cells and the card cover. */
 export interface DesignParams {
   template: TemplateId;
   colors: Record<string, ColorId>;
   options: Record<string, string>;
-  /** Lab kits only. Not part of the structural key. */
-  identity?: CreatureIdentity;
+  /** Mosaic designs only (template "mosaic"): cell colors, see model/mosaic.ts. Not part of the structural key. */
+  mosaic?: { cells: string };
+  /** Card cover. Not part of the structural key. */
+  card?: CardParams;
 }
 
 /** The authoritative model. Preview, BOM and instructions all derive from this. */

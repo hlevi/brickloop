@@ -2,7 +2,6 @@ import { resetDbForTests, getDb } from "@/lib/db";
 import { drainJobs } from "@/lib/jobs/worker";
 
 process.env.BRICKLOOP_QUIET = "1";
-process.env.UPLOAD_DIR = process.env.UPLOAD_DIR || `/tmp/brickloop-test-uploads-${process.pid}`;
 
 export async function freshDb() {
   return resetDbForTests();

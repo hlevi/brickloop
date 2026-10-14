@@ -3,12 +3,10 @@ import { computeBom, type Bom } from "../bom/bom";
 import type { MappingLookup } from "../catalog/mappings";
 import type { DesignModel } from "../model/types";
 import type { ValidationResult } from "../validation/validate";
-import { drawCardPage, drawCreatureCover, drawPowerUpStep, embedPackFonts, type CreaturePackInfo, type PackContext } from "./creaturePages";
 import { renderIso } from "./iso";
 import { drawPartsCallout, drawRender, renderSinglePart, trim } from "./pdfDraw";
 
 export { renderSinglePart } from "./pdfDraw";
-export type { CreaturePackInfo } from "./creaturePages";
 
 const PAGE_W = 612;
 const PAGE_H = 792;
@@ -21,36 +19,18 @@ export interface InstructionOptions {
   validation: ValidationResult;
   lookup?: MappingLookup;
   revisionLabel?: string;
-  /**
-   * Lab kits: turns the booklet into a personalized Creature Pack (keepsake
-   * cover, cut-out card and certificate page, special final step). Only the
-   * creature's own identity goes in here, never anything about the purchaser.
-   */
-  creature?: CreaturePackInfo;
 }
 
 export async function generateInstructionsPdf(model: DesignModel, opts: InstructionOptions): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  doc.setTitle(opts.creature ? `${opts.title} - BrickLoop Creature Pack` : `${opts.title} - BrickLoop building instructions`);
+  doc.setTitle(`${opts.title} - BrickLoop building instructions`);
   doc.setProducer("BrickLoop");
   doc.setCreator("BrickLoop instruction renderer");
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const bom: Bom = computeBom(model, opts.lookup);
-  const totalPages = 2 + (opts.creature ? 1 : 0) + model.steps.length;
+  const totalPages = 2 + model.steps.length;
   let pageNo = 0;
-
-  const pack: PackContext | null = opts.creature
-    ? {
-        model,
-        info: opts.creature,
-        fonts: await embedPackFonts(doc, font, bold),
-        validation: opts.validation,
-        pieces: bom.totalPieces,
-        pageW: PAGE_W,
-        margin: MARGIN,
-      }
-    : null;
 
   const newPage = () => {
     const page = doc.addPage([PAGE_W, PAGE_H]);
@@ -62,10 +42,7 @@ export async function generateInstructionsPdf(model: DesignModel, opts: Instruct
   };
 
   // Cover.
-  if (pack) {
-    drawCreatureCover(newPage(), pack);
-    drawCardPage(newPage(), pack);
-  } else {
+  {
     const page = newPage();
     page.drawText(opts.title, { x: MARGIN, y: PAGE_H - 80, size: 28, font: bold });
     page.drawText(`${bom.totalPieces} pieces  |  ${model.steps.length} steps  |  ${model.templateVersion}`, { x: MARGIN, y: PAGE_H - 104, size: 11, font });
@@ -98,13 +75,8 @@ export async function generateInstructionsPdf(model: DesignModel, opts: Instruct
   }
 
   // Steps.
-  const lastStep = model.steps[model.steps.length - 1];
   for (const step of model.steps) {
     const page = newPage();
-    if (pack && step === lastStep) {
-      drawPowerUpStep(page, pack, step);
-      continue;
-    }
     page.drawText(`Step ${step.index}`, { x: MARGIN, y: PAGE_H - 70, size: 22, font: bold });
     page.drawText(step.title, { x: MARGIN, y: PAGE_H - 90, size: 12, font });
     if (step.note) page.drawText(step.note, { x: MARGIN, y: PAGE_H - 106, size: 10, font, color: rgb(0.2, 0.2, 0.5) });

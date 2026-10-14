@@ -13,12 +13,10 @@ import { redact } from "@/lib/redact";
 import { getSupplier } from "@/lib/suppliers/registry";
 import { UnsupportedOperationError } from "@/lib/suppliers/types";
 import { UnverifiedSupplier, CANDIDATE_SUPPLIERS } from "@/lib/suppliers/unverified";
-import { readUpload, saveUpload, sniffImage } from "@/lib/uploads";
 import { validateModel } from "@/lib/validation/validate";
 import { handleWebhook, signWebhook, verifyWebhookSignature } from "@/lib/webhooks";
 import { freshDb } from "./helpers";
 
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)]);
 
 describe("platform", () => {
   beforeEach(async () => {
@@ -58,20 +56,6 @@ describe("platform", () => {
     expect(checkAdminPassword("a-long-enough-password")).toBe(true);
     expect(checkAdminPassword("a-long-enough-passwore")).toBe(false);
     process.env.ADMIN_PASSWORD = prev;
-  });
-
-  it("accepts only real images within limits and keeps them private", async () => {
-    const owner = crypto.randomUUID();
-    const designId = await createDesign(owner, "cottage");
-    expect(sniffImage(PNG)?.mime).toBe("image/png");
-    await expect(saveUpload(owner, designId, "x.png", Buffer.from("<svg onload=alert(1)>"))).rejects.toThrow(/Only PNG/);
-    await expect(saveUpload(owner, designId, "big.png", Buffer.concat([PNG, Buffer.alloc(6 * 1024 * 1024)]))).rejects.toThrow(/MB or smaller/);
-    await expect(saveUpload(crypto.randomUUID(), designId, "x.png", PNG)).rejects.toThrow(/not found/i);
-    const up = await saveUpload(owner, designId, "../../etc/passwd.png", PNG);
-    expect(up.name).not.toContain("/");
-    expect((await readUpload(owner, up.id)).mime).toBe("image/png");
-    await expect(readUpload(crypto.randomUUID(), up.id)).rejects.toThrow(/Not found/);
-    expect((await readUpload(null, up.id, true)).data.length).toBe(PNG.length);
   });
 
   it("generates instruction PDFs with a cover, parts list and one page per step", async () => {

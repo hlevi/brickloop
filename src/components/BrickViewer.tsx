@@ -7,8 +7,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { COLORS } from "@/lib/catalog/colors";
 import { PARTS } from "@/lib/catalog/parts";
-import { partKey, revealOrder } from "@/lib/creature/anim";
-import { easeOutBack, revealStep } from "@/lib/creature/lab";
+import { easeOutBack, partKey, revealOrder, revealStep } from "@/lib/model/reveal";
 import type { PlacedPart } from "@/lib/model/types";
 
 const PLATE = 0.4;

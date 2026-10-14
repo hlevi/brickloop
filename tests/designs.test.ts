@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import crypto from "node:crypto";
-import { applyEdits, budgetSuggestions, chat, createDesign, getDesignView, listDesigns, reset, undo } from "@/lib/designs";
+import { applyEdits, createCardDesign, createDesign, getDesignView, listDesigns, previewCard, reset, undo } from "@/lib/designs";
+import { DEFAULT_SETTINGS } from "@/lib/settings";
 import { freshDb } from "./helpers";
 
 const alice = crypto.randomUUID();
@@ -16,7 +17,7 @@ describe("designs", () => {
     const v1 = await getDesignView(alice, id);
     expect(v1.revision.rev).toBe(1);
     expect(v1.revision.canUndo).toBe(false);
-    const out = await applyEdits(alice, id, [{ name: "set_option", input: { option: "size", value: "roomy" } }, { name: "set_color", input: { component: "roof", color: "purple" } }], "visual");
+    const out = await applyEdits(alice, id, [{ name: "set_option", input: { option: "size", value: "roomy" } }, { name: "set_color", input: { component: "roof", color: "purple" } }]);
     expect(out.applied).toHaveLength(1);
     expect(out.rejected[0]).toMatch(/Unknown color/);
     const v2 = await getDesignView(alice, id);
@@ -26,7 +27,7 @@ describe("designs", () => {
     const v3 = await getDesignView(alice, id);
     expect(v3.revision.id).toBe(v1.revision.id);
     await expect(undo(alice, id)).rejects.toThrow(/Nothing to undo/);
-    await applyEdits(alice, id, [{ name: "set_option", input: { option: "chimney", value: "no" } }], "visual");
+    await applyEdits(alice, id, [{ name: "set_option", input: { option: "chimney", value: "no" } }]);
     await reset(alice, id);
     const v4 = await getDesignView(alice, id);
     expect(v4.params).toEqual(v1.params);
@@ -36,33 +37,36 @@ describe("designs", () => {
   it("isolates customers' designs", async () => {
     const id = await createDesign(alice, "pup");
     await expect(getDesignView(bob, id)).rejects.toThrow(/not found/i);
-    await expect(applyEdits(bob, id, [{ name: "set_option", input: { option: "spots", value: "no" } }], "visual")).rejects.toThrow(/not found/i);
+    await expect(applyEdits(bob, id, [{ name: "set_option", input: { option: "spots", value: "no" } }])).rejects.toThrow(/not found/i);
     expect(await listDesigns(bob)).toHaveLength(0);
     expect(await listDesigns(alice)).toHaveLength(1);
   });
 
-  it("chat in mock mode applies validated edits and clarifies ambiguity", async () => {
-    process.env.CHAT_MODE = "mock";
-    const id = await createDesign(alice, "cottage");
-    const r1 = await chat(alice, id, "make the roof black and remove the chimney, no chimney");
-    expect(r1.mode).toBe("mock");
-    expect(r1.applied).toEqual(expect.arrayContaining(["roof set to Black", "chimney set to No chimney"]));
-    const r2 = await chat(alice, id, "make it green");
-    expect(r2.applied).toEqual([]);
-    expect(r2.reply).toMatch(/Which part/);
-    const r3 = await chat(alice, id, "undo");
-    expect(r3.reply).toMatch(/Undone/);
+  it("creates a card design with the shopper's choices in one revision, and resets to the card's defaults", async () => {
+    const id = await createCardDesign(alice, "home-sweet-home", [
+      { name: "set_color", input: { component: "roof", color: "blue" } },
+      { name: "set_card", input: { headline: "Welcome Home, Sam" } },
+    ]);
     const v = await getDesignView(alice, id);
-    expect(v.params.options.chimney).toBe("yes");
+    expect(v.revision.rev).toBe(1);
+    expect(v.card).toEqual({ id: "home-sweet-home", title: "Home Sweet Home", headline: "Welcome Home, Sam", theme: "sage-leaves" });
+    expect(v.params.colors.roof).toBe("blue");
+    expect(v.template).toBe("cottage");
+    expect(v.priceCents).toBe(DEFAULT_SETTINGS.cardPrices[v.tier]);
+    expect((await listDesigns(alice))[0].card?.headline).toBe("Welcome Home, Sam");
+    await reset(alice, id);
+    const r = await getDesignView(alice, id);
+    expect(r.card?.headline).toBe("Home Sweet Home");
+    expect(r.params.colors.roof).toBe("red");
   });
 
-  it("suggests supported edits that fit a budget", async () => {
-    const id = await createDesign(alice, "cottage");
-    await applyEdits(alice, id, [{ name: "set_option", input: { option: "size", value: "roomy" } }], "visual");
-    const v = await getDesignView(alice, id);
-    const s = await budgetSuggestions(alice, id, v.estimate.totalCents - 1);
-    expect(s.withinBudget).toBe(false);
-    expect(s.suggestions.length).toBeGreaterThan(0);
-    expect(s.suggestions.every((x) => x.estimateCents < v.estimate.totalCents)).toBe(true);
+  it("rejects unknown cards and invalid choices when creating, and previews without saving", async () => {
+    await expect(createCardDesign(alice, "no-such-card")).rejects.toThrow(/Card not found/);
+    await expect(createCardDesign(alice, "brick-heart", [{ name: "set_card", input: { theme: "holly-snow" } }])).rejects.toThrow(/cover themes/);
+    const p = await previewCard("brick-heart", [{ name: "set_option", input: { option: "size", value: "8" } }]);
+    expect(p.tier).toBe("mosaic-8");
+    expect(p.model.parts).toHaveLength(65);
+    expect(p.validation.status).toBe("valid");
+    expect(await listDesigns(alice)).toHaveLength(0);
   });
 });

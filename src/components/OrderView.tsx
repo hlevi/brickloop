@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { renderIso, toSvg } from "@/lib/instructions/iso";
-import { renderBuilder, renderName } from "@/lib/creature/words";
 import { formatCents, statusLabel } from "@/lib/format";
 import type { CustomerOrderView, QuoteRow } from "@/lib/orders/service";
 import type { EnvironmentalReport } from "@/lib/environment";
@@ -53,9 +52,9 @@ export default function OrderView({ orderId }: { orderId: string }) {
   if (!data) return <p className="muted">Loading order...</p>;
   const o = data.order;
   const sim = o.mode === "simulated";
-  // Creature Lab orders carry one fixed price (incl. delivery and taxes) and the creature's generated name.
+  // Card orders carry one fixed price (incl. printing, packing, delivery and taxes).
   const fixed = o.fixed_price_cents !== null && o.fixed_price_cents !== undefined;
-  const identity = data.model.params.identity;
+  const cardTitle = o.card?.title ?? null;
   const act = async (path: string, body: unknown) => {
     setBusy(true);
     setActionErr(null);
@@ -71,11 +70,11 @@ export default function OrderView({ orderId }: { orderId: string }) {
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        {fixed && identity ? (
+        {cardTitle ? (
           <div>
-            <h1 style={{ margin: 0 }}>{renderName(identity)}</h1>
+            <h1 style={{ margin: 0 }}>{cardTitle}</h1>
             <p className="small muted" style={{ margin: 0 }}>
-              Invented by <strong>{renderBuilder(identity)}</strong> &middot; order <span className="mono">{o.id.slice(0, 8)}</span>
+              Greeting card &middot; order <span className="mono">{o.id.slice(0, 8)}</span>
             </p>
           </div>
         ) : (
@@ -174,7 +173,7 @@ export default function OrderView({ orderId }: { orderId: string }) {
             <p className="small">
               {o.frozen_bom.totalPieces} pieces &middot; design frozen at checkout &middot;{" "}
               <a href={`/api/orders/${orderId}/instructions`} target="_blank" rel="noreferrer">
-                {fixed && identity ? `${renderName(identity)}'s Creature Pack (PDF): card, certificate and building steps` : "Building instructions (PDF)"}
+                Building instructions (PDF)
               </a>
             </p>
           </section>

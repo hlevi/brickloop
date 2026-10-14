@@ -1,18 +1,17 @@
 import type { ColorId } from "../../catalog/colors";
 import type { Blueprint } from "../kit";
+import type { BuildStep, DesignParams, PlacedPart } from "../types";
 
 export type AgeBand = "4+" | "6+" | "7+" | "8+" | "9+" | "12+";
 
 export interface KitOption {
   id: string;
   label: string;
-  values: { id: string; label: string; synonyms?: string[]; icon?: string }[];
+  values: { id: string; label: string; synonyms?: string[] }[];
   default: string;
   /** Values are ordered small -> large, so "bigger"/"smaller" can step through them. */
   ordered?: boolean;
   synonyms?: string[];
-  /** Short kid-facing tab label and emoji icon (Lab kits). */
-  tab?: { label: string; icon: string };
 }
 
 export interface KitComponent {
@@ -33,7 +32,8 @@ export interface KitDef {
   description: string;
   components: KitComponent[];
   options: KitOption[];
-  /** Kid-mode "Lab" kit: shown in the Creature Lab, ordered only through a grown-up wish. */
-  lab?: boolean;
-  blueprint(options: Record<string, string>): Blueprint;
+  /** Layered voxel blueprint, compiled by model/kit.ts. Every kit has this or `build`. */
+  blueprint?(options: Record<string, string>): Blueprint;
+  /** Direct builder for kits that are not voxel blueprints (mosaics). */
+  build?(options: Record<string, string>, colors: Record<string, ColorId>, params: DesignParams): { parts: PlacedPart[]; steps: BuildStep[] };
 }

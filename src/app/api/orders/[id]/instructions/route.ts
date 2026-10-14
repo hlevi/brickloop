@@ -1,4 +1,4 @@
-import { orderInstructionsPdf } from "@/lib/instructions/creaturePack";
+import { orderInstructionsPdf } from "@/lib/instructions/files";
 import { requireCustomerId, route, type Ctx } from "@/lib/http";
 
 export const GET = route(async (_req: Request, ctx: Ctx) => {

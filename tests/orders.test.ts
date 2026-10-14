@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import crypto from "node:crypto";
 import { getDb } from "@/lib/db";
-import { applyEdits, createDesign } from "@/lib/designs";
+import { applyEdits, createCardDesign, createDesign, getDesignView } from "@/lib/designs";
 import { resolveException } from "@/lib/exceptions/resolve";
 import { acceptQuote, createOrder, getCustomerOrder, requestCancel } from "@/lib/orders/service";
 import { getSettings, updateSettings, updateSimulatorSettings } from "@/lib/settings";
 import { SimulatorSupplier } from "@/lib/suppliers/simulator";
-import { claimWish, createWish, getWishForGrownup, KID_STAGES, kidStatus } from "@/lib/wishes";
 import { CONTACT, freshDb, openExceptions, orderStatus, runAll } from "./helpers";
 
 const cust = () => crypto.randomUUID();
@@ -72,7 +71,7 @@ describe("order workflow (simulation)", () => {
   it("freezes the design revision at checkout", async () => {
     const { customer, designId, orderId } = await orderAwaitingAcceptance();
     const { applyEdits } = await import("@/lib/designs");
-    await applyEdits(customer, designId, [{ name: "set_option", input: { option: "size", value: "roomy" } }], "visual");
+    await applyEdits(customer, designId, [{ name: "set_option", input: { option: "size", value: "roomy" } }]);
     const view = await getCustomerOrder(customer, orderId);
     expect(view.model.params.options.size).toBe("cozy");
   });
@@ -327,25 +326,22 @@ describe("order workflow (simulation)", () => {
   });
 });
 
-describe("creature orders through a grown-up wish (fixed price)", () => {
+describe("card orders (fixed price)", () => {
   beforeEach(async () => {
     await freshDb();
   });
 
-  /** The most expensive creature (61 pieces, about $12.82 simulated supplier cost). */
-  const WORST_CASE = { body: "long", legs: "stompers", head: "robo", eyes: "googly", tail: "whip", back: "shell", crown: "horns" };
+  const CARD = {
+    sendTo: "recipient",
+    message: "Happy birthday!\nLove, Pat",
+    signature: "Pat",
+    font: "script",
+    recipient: { name: "Sam Example", line1: "2 Elm Street", city: "Springfield", region: "IL", postalCode: "62702", country: "us" },
+  };
 
-  /** Kid makes a wish; a grown-up looks at it and claims it into their own session. */
-  async function claimedCreature(options: Record<string, string> = {}) {
-    const kid = cust();
-    const kidDesign = await createDesign(kid, "creature");
-    const calls = Object.entries(options).map(([option, value]) => ({ name: "set_option", input: { option, value } }));
-    if (calls.length) expect((await applyEdits(kid, kidDesign, calls, "visual")).rejected).toEqual([]);
-    const wish = await createWish(kid, kidDesign, "together");
-    await getWishForGrownup(wish.code);
-    const adult = cust();
-    const { designId } = await claimWish(adult, wish.code);
-    return { kid, adult, designId, code: wish.code };
+  async function cardDesign(cardId = "puppy-love", calls: { name: string; input: Record<string, unknown> }[] = []) {
+    const c = cust();
+    return { c, designId: await createCardDesign(c, cardId, calls) };
   }
 
   async function fastForward(orderId: string, to: "shipped" | "delivered") {
@@ -355,138 +351,111 @@ describe("creature orders through a grown-up wish (fixed price)", () => {
     await runAll();
   }
 
-  it("drives a wish-claimed creature to delivered at exactly the fixed price while the kid stage only moves forward", async () => {
-    const { kid, adult, designId, code } = await claimedCreature(WORST_CASE);
-    const stages: string[] = [];
-    const record = async () => {
-      const s = await kidStatus(kid, code);
-      expect(s.slow).toBe(false);
-      stages.push(s.stage);
-    };
-    await record();
-    const orderId = await createOrder(adult, { designId, contact: CONTACT, adultConfirmed: true });
-    await record();
+  it("drives a card to delivered at exactly its tier price and stores what gets printed", async () => {
+    const { c, designId } = await cardDesign("puppy-love", [{ name: "set_card", input: { headline: "Happy 7th, Sam" } }]);
+    const price = (await getDesignView(c, designId)).priceCents;
+    const orderId = await createOrder(c, { designId, contact: CONTACT, adultConfirmed: true, card: CARD, expectedPriceCents: price });
     await runAll();
     expect(await orderStatus(orderId)).toBe("awaiting_acceptance");
-    await record();
     const s = await getSettings();
-    const { quote, order } = await getCustomerOrder(adult, orderId);
-    expect(order.fixed_price_cents).toBe(s.creaturePriceCents);
+    const { quote, order } = await getCustomerOrder(c, orderId);
+    expect(order.fixed_price_cents).toBe(price);
+    expect(order.card).toMatchObject({ cardId: "puppy-love", title: "Puppy Love", headline: "Happy 7th, Sam", message: "Happy birthday!\nLove, Pat", font: "script", sendTo: "recipient" });
+    expect(order.card!.recipient).toMatchObject({ name: "Sam Example", country: "US" });
     expect(quote!.complete).toBe(true);
-    expect(quote!.customer_total_cents).toBe(s.creaturePriceCents);
-    expect(quote!.service_fee_cents).toBe(s.creaturePriceCents - quote!.supplier_total_cents);
-    expect(quote!.contribution_cents).toBe(quote!.service_fee_cents - quote!.payment_fee_estimate_cents);
+    expect(quote!.customer_total_cents).toBe(price);
     expect(quote!.contribution_cents).toBeGreaterThanOrEqual(s.minContributionCents);
-    await acceptQuote(adult, orderId, { quoteId: quote!.id, paymentMethod: "sim_ok" });
-    await record();
+    await acceptQuote(c, orderId, { quoteId: quote!.id, paymentMethod: "sim_ok" });
     await runAll();
     expect(await orderStatus(orderId)).toBe("purchased");
-    await record();
-    await fastForward(orderId, "shipped");
-    expect(await orderStatus(orderId)).toBe("shipped");
-    await record();
     await fastForward(orderId, "delivered");
     expect(await orderStatus(orderId)).toBe("delivered");
-    await record();
-    expect(stages).toEqual(["seen", "ordered", "ordered", "gathering", "packing", "on_the_way", "arrived"]);
-    const idx = stages.map((st) => KID_STAGES.indexOf(st as (typeof KID_STAGES)[number]));
-    for (let i = 1; i < idx.length; i++) expect(idx[i]).toBeGreaterThanOrEqual(idx[i - 1]);
     const db = await getDb();
     const pay = (await db.query<{ status: string; amount_cents: number; captured_cents: number }>(`SELECT * FROM payments WHERE order_id = $1`, [orderId])).rows;
-    expect(pay).toEqual([expect.objectContaining({ status: "captured", amount_cents: s.creaturePriceCents, captured_cents: s.creaturePriceCents })]);
+    expect(pay).toEqual([expect.objectContaining({ status: "captured", amount_cents: price, captured_cents: price })]);
     expect((await db.query(`SELECT * FROM exceptions WHERE order_id = $1`, [orderId])).rows).toHaveLength(0);
-    // Order emails go only to the adult purchaser and keep the simulation prefix.
-    const mail = (await db.query<{ recipient: string; subject: string }>(`SELECT recipient, subject FROM notifications WHERE kind = 'customer'`)).rows;
+    // Emails go only to the purchaser, keep the simulation prefix, and never quote the inside message.
+    const mail = (await db.query<{ recipient: string; subject: string; body: string }>(`SELECT recipient, subject, body FROM notifications WHERE kind = 'customer'`)).rows;
     expect(mail.length).toBeGreaterThan(0);
     for (const m of mail) {
       expect(m.recipient).toBe(CONTACT.email);
       expect(m.subject.startsWith("[SIMULATION] ")).toBe(true);
+      expect(m.body).not.toContain("Happy birthday!");
     }
+    // The audit log never holds the message or the recipient.
+    const audit = JSON.stringify((await db.query(`SELECT * FROM audit_events`)).rows);
+    expect(audit).not.toContain("Happy birthday!");
+    expect(audit).not.toContain("2 Elm Street");
+  });
+
+  it("requires card details, refuses a price the buyer did not see, and checks the ship date", async () => {
+    const { c, designId } = await cardDesign();
+    const price = (await getDesignView(c, designId)).priceCents;
+    await expect(createOrder(c, { designId, contact: CONTACT, adultConfirmed: true })).rejects.toThrow(/who the card is sent to/);
+    await expect(createOrder(c, { designId, contact: CONTACT, adultConfirmed: true, card: { ...CARD, recipient: {} } })).rejects.toThrow(/Recipient name/);
+    await expect(createOrder(c, { designId, contact: CONTACT, adultConfirmed: true, card: CARD, expectedPriceCents: price - 100 })).rejects.toThrow(/price of this card has changed/);
+    await expect(createOrder(c, { designId, contact: CONTACT, adultConfirmed: true, card: { ...CARD, shipOn: "2001-01-01" } })).rejects.toThrow(/past/);
+    await expect(createOrder(c, { designId, contact: CONTACT, adultConfirmed: true, card: { ...CARD, shipOn: "next tuesday" } })).rejects.toThrow(/YYYY-MM-DD/);
+    const later = new Date(Date.now() + 10 * 86400_000).toISOString().slice(0, 10);
+    const orderId = await createOrder(c, { designId, contact: CONTACT, adultConfirmed: true, card: { ...CARD, sendTo: "me", shipOn: later } });
+    const { order } = await getCustomerOrder(c, orderId);
+    expect(order.card).toMatchObject({ sendTo: "me", recipient: null, shipOn: later });
+    expect(String(order.ship_on).slice(0, 10) === later || new Date(order.ship_on!).toISOString().slice(0, 10) === later).toBe(true);
   });
 
   it("never authorizes or captures more than the fixed price", async () => {
-    const { adult, designId } = await claimedCreature();
-    const orderId = await createOrder(adult, { designId, contact: CONTACT, adultConfirmed: true });
+    const { c, designId } = await cardDesign();
+    const orderId = await createOrder(c, { designId, contact: CONTACT, adultConfirmed: true, card: CARD });
     await runAll();
-    const { quote } = await getCustomerOrder(adult, orderId);
+    const { quote, order } = await getCustomerOrder(c, orderId);
+    const price = order.fixed_price_cents!;
     const db = await getDb();
     // A quote that somehow differs from the fixed price is refused before any authorization.
-    await db.query(`UPDATE quotes SET customer_total_cents = 2500 WHERE id = $1`, [quote!.id]);
-    await expect(acceptQuote(adult, orderId, { quoteId: quote!.id, paymentMethod: "sim_ok" })).rejects.toThrow(/fixed price/);
+    await db.query(`UPDATE quotes SET customer_total_cents = $2 WHERE id = $1`, [quote!.id, price + 100]);
+    await expect(acceptQuote(c, orderId, { quoteId: quote!.id, paymentMethod: "sim_ok" })).rejects.toThrow(/fixed price/);
     expect((await db.query(`SELECT * FROM payments WHERE order_id = $1`, [orderId])).rows).toHaveLength(0);
-    await db.query(`UPDATE quotes SET customer_total_cents = 2400 WHERE id = $1`, [quote!.id]);
-    await acceptQuote(adult, orderId, { quoteId: quote!.id, paymentMethod: "sim_ok" });
+    await db.query(`UPDATE quotes SET customer_total_cents = $2 WHERE id = $1`, [quote!.id, price]);
+    await acceptQuote(c, orderId, { quoteId: quote!.id, paymentMethod: "sim_ok" });
     // Even if the stored amounts were inflated afterwards, the capture is capped at the fixed price.
-    await db.query(`UPDATE orders SET accepted_total_cents = 9999 WHERE id = $1`, [orderId]);
-    await db.query(`UPDATE payments SET amount_cents = 9999 WHERE order_id = $1`, [orderId]);
+    await db.query(`UPDATE orders SET accepted_total_cents = 99999 WHERE id = $1`, [orderId]);
+    await db.query(`UPDATE payments SET amount_cents = 99999 WHERE order_id = $1`, [orderId]);
     await runAll();
     expect(await orderStatus(orderId)).toBe("purchased");
     const pay = (await db.query<{ status: string; captured_cents: number }>(`SELECT * FROM payments WHERE order_id = $1`, [orderId])).rows;
-    expect(pay).toEqual([expect.objectContaining({ status: "captured", captured_cents: 2400 })]);
+    expect(pay).toEqual([expect.objectContaining({ status: "captured", captured_cents: price })]);
   });
 
-  it("an exception holds the kid stage it came from with 'slow', and a refund sends the kid back to waiting", async () => {
-    const { kid, adult, designId, code } = await claimedCreature();
-    const orderId = await createOrder(adult, { designId, contact: CONTACT, adultConfirmed: true });
-    await runAll();
-    const { quote } = await getCustomerOrder(adult, orderId);
-    await acceptQuote(adult, orderId, { quoteId: quote!.id, paymentMethod: "sim_ok" });
-    await runAll();
-    await fastForward(orderId, "shipped");
-    expect(await kidStatus(kid, code)).toEqual({ stage: "on_the_way", slow: false });
-    const db = await getDb();
-    // Simulate a held order (e.g. a delivery problem the owner is looking at).
-    await db.query(`UPDATE orders SET status = 'exception', held_from_status = 'shipped' WHERE id = $1`, [orderId]);
-    expect(await kidStatus(kid, code)).toEqual({ stage: "on_the_way", slow: true });
-    await db.query(`UPDATE orders SET status = 'refunded', held_from_status = NULL WHERE id = $1`, [orderId]);
-    expect(await kidStatus(kid, code)).toEqual({ stage: "waiting", slow: false });
-  });
-
-  it("keeps ready-made kits on estimate-then-quote pricing", async () => {
+  it("keeps non-card designs on estimate-then-quote pricing", async () => {
     const c = cust();
     const designId = await createDesign(c, "cottage");
     const orderId = await createOrder(c, { designId, contact: CONTACT, adultConfirmed: true });
     await runAll();
     const { quote, order } = await getCustomerOrder(c, orderId);
     expect(order.fixed_price_cents).toBeNull();
-    expect(order.wish_code).toBeNull();
+    expect(order.card).toBeNull();
     expect(quote!.customer_total_cents).toBe(quote!.supplier_total_cents + quote!.service_fee_cents);
-    expect(quote!.customer_total_cents).not.toBe((await getSettings()).creaturePriceCents);
   });
 
   it("raises contribution_below_minimum on a 150% supplier drift and never charges above the fixed price", async () => {
     await updateSimulatorSettings({ priceDriftPercent: 150 }, "test");
-    const { kid, adult, designId, code } = await claimedCreature(WORST_CASE);
-    const orderId = await createOrder(adult, { designId, contact: CONTACT, adultConfirmed: true });
+    const { c, designId } = await cardDesign("brick-heart");
+    const orderId = await createOrder(c, { designId, contact: CONTACT, adultConfirmed: true, card: CARD });
     await runAll();
     expect(await orderStatus(orderId)).toBe("exception");
     const [ex] = await openExceptions(orderId);
     expect(ex.kind).toBe("contribution_below_minimum");
     const db = await getDb();
-    const quotes = (await db.query<{ customer_total_cents: number; supplier_total_cents: number; contribution_cents: number }>(`SELECT * FROM quotes WHERE order_id = $1`, [orderId])).rows;
+    const price = (await getCustomerOrder(c, orderId)).order.fixed_price_cents!;
+    const quotes = (await db.query<{ customer_total_cents: number; contribution_cents: number }>(`SELECT * FROM quotes WHERE order_id = $1`, [orderId])).rows;
     expect(quotes.length).toBeGreaterThan(0);
     for (const q of quotes) {
-      expect(q.customer_total_cents).toBe(2400);
-      expect(q.supplier_total_cents).toBeGreaterThan(2400 * 0.8);
+      expect(q.customer_total_cents).toBe(price);
       expect(q.contribution_cents).toBeLessThan(150);
     }
-    // A held order cannot be accepted, so nothing is authorized or charged.
-    const v = await getCustomerOrder(adult, orderId);
-    if (v.quote) await expect(acceptQuote(adult, orderId, { quoteId: v.quote.id, paymentMethod: "sim_ok" })).rejects.toThrow(/nothing to accept/);
+    const v = await getCustomerOrder(c, orderId);
+    if (v.quote) await expect(acceptQuote(c, orderId, { quoteId: v.quote.id, paymentMethod: "sim_ok" })).rejects.toThrow(/nothing to accept/);
     expect((await db.query(`SELECT * FROM payments WHERE order_id = $1`, [orderId])).rows).toHaveLength(0);
-    expect((await db.query(`SELECT * FROM sim_payments`)).rows).toHaveLength(0);
-    // The kid only sees "Ordered!" with "Taking a little longer".
-    expect(await kidStatus(kid, code)).toEqual({ stage: "ordered", slow: true });
-    // The owner cancels: the kid goes back to "Waiting for a grown-up", and the grown-up may order again later.
     await resolveException({ exceptionId: ex.id, action: "cancel_and_release", ownerMinutes: 1 }, "admin");
     expect(await orderStatus(orderId)).toBe("canceled");
-    expect(await kidStatus(kid, code)).toEqual({ stage: "waiting", slow: false });
-    await updateSimulatorSettings({ priceDriftPercent: 0 }, "test");
-    expect(await claimWish(adult, code)).toEqual({ designId, orderId: null });
-    const again = await createOrder(adult, { designId, contact: CONTACT, adultConfirmed: true });
-    await runAll();
-    expect(await orderStatus(again)).toBe("awaiting_acceptance");
-    expect((await getCustomerOrder(adult, again)).quote!.customer_total_cents).toBe(2400);
-    expect(await kidStatus(kid, code)).toEqual({ stage: "ordered", slow: false });
   });
 });

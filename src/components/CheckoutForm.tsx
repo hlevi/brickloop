@@ -4,9 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { formatCents } from "@/lib/format";
 
-/** Adult purchaser checkout. With `fixedPriceCents` (Creature Lab) there is no budget: the quote is always that price. */
-export default function CheckoutForm({ designId, fixedPriceCents }: { designId: string; fixedPriceCents?: number }) {
-  const fixed = typeof fixedPriceCents === "number";
+/** Interim card checkout: adult purchaser, inside message, sent to the purchaser. Replaced in the card-shop build. */
+export default function CheckoutForm({ designId, priceCents }: { designId: string; priceCents: number }) {
   const router = useRouter();
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -18,7 +17,6 @@ export default function CheckoutForm({ designId, fixedPriceCents }: { designId: 
         setErr(null);
         const f = new FormData(e.currentTarget);
         const get = (k: string) => String(f.get(k) ?? "").trim();
-        const budget = fixed ? "" : get("budget");
         setBusy(true);
         const r = await fetch("/api/orders", {
           method: "POST",
@@ -26,7 +24,8 @@ export default function CheckoutForm({ designId, fixedPriceCents }: { designId: 
           body: JSON.stringify({
             designId,
             adultConfirmed: f.get("adult") === "on",
-            budgetCents: budget ? Math.round(Number(budget) * 100) : undefined,
+            expectedPriceCents: priceCents,
+            card: { sendTo: "me", message: get("message"), signature: get("signature"), font: "classic" },
             contact: {
               name: get("name"),
               email: get("email"),
@@ -73,22 +72,20 @@ export default function CheckoutForm({ designId, fixedPriceCents }: { designId: 
           <input id="country" name="country" type="text" autoComplete="country" required maxLength={2} defaultValue="US" />
         </div>
       </div>
-      {fixed ? (
-        <p className="small" style={{ marginTop: 0 }}>
-          <strong>{formatCents(fixedPriceCents)}</strong> fixed price, includes delivery and taxes. The confirmed quote will be exactly this amount.
-        </p>
-      ) : (
-        <div className="field">
-          <label htmlFor="budget">Budget (optional, USD)</label>
-          <input id="budget" name="budget" type="number" min="1" step="1" style={{ maxWidth: 160 }} />
-        </div>
-      )}
+      <div className="field">
+        <label htmlFor="message">Inside message</label>
+        <textarea id="message" name="message" rows={4} maxLength={500} />
+      </div>
+      <div className="field">
+        <label htmlFor="signature">Signed</label>
+        <input id="signature" name="signature" type="text" maxLength={60} />
+      </div>
       <label className="row small" style={{ marginBottom: 14 }}>
         <input type="checkbox" name="adult" required /> I am 18 or older and I am the purchaser.
       </label>
       {err && <p className="error">{err}</p>}
       <button className="btn primary" disabled={busy}>
-        {busy ? "Requesting quote..." : fixed ? `Continue at ${formatCents(fixedPriceCents)}` : "Request confirmed quote"}
+        {busy ? "Starting your order..." : `Continue at ${formatCents(priceCents)}`}
       </button>
     </form>
   );

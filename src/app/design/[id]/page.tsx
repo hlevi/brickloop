@@ -1,15 +1,31 @@
-import { redirect } from "next/navigation";
-import Editor from "@/components/Editor";
+import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getDesignView } from "@/lib/designs";
+import { formatCents } from "@/lib/format";
 import { getCustomerId } from "@/lib/http";
+import { renderIso, toSvg } from "@/lib/instructions/iso";
 import { isUuid } from "@/lib/util";
-import { isClaimedCopy } from "@/lib/wishes";
 
-export default async function DesignPage(props: { params: Promise<{ id: string }> }) {
+/** Interim saved-card page (replaced in the card-shop build). */
+export default async function SavedCard(props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
-  // Creature Lab designs never open in the grown-up editor (no chat, uploads, prices or exports in kid mode).
   const cid = await getCustomerId(false);
   const view = cid && isUuid(id) ? await getDesignView(cid, id).catch(() => null) : null;
-  if (view?.lab) redirect((await isClaimedCopy(id)) ? `/design/${id}/checkout` : `/lab/${id}`);
-  return <Editor designId={id} />;
+  if (!view) notFound();
+  const svg = toSvg(renderIso(view.model.parts), { width: 360 });
+  return (
+    <div className="stack" style={{ maxWidth: 720 }}>
+      <h1>{view.card?.title ?? view.name}</h1>
+      {view.card && <p className="muted">Cover: &ldquo;{view.card.headline}&rdquo;</p>}
+      <div dangerouslySetInnerHTML={{ __html: svg }} />
+      <p>
+        {view.bom.totalPieces} pieces &middot; {formatCents(view.priceCents)}
+      </p>
+      <p>
+        <Link className="btn primary" href={`/checkout/${id}`}>
+          Continue to checkout
+        </Link>
+      </p>
+    </div>
+  );
 }

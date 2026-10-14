@@ -15,17 +15,6 @@ export const env = {
   get webhookSecret() {
     return process.env.WEBHOOK_SECRET || (process.env.NODE_ENV === "production" ? "" : "dev-webhook-secret");
   },
-  get anthropicKey() {
-    return process.env.ANTHROPIC_API_KEY || "";
-  },
-  get llmModel() {
-    return process.env.LLM_MODEL || "claude-opus-5-5";
-  },
-  /** Chat mode: "llm" only when explicitly enabled and a key is present. */
-  get chatMode(): "mock" | "llm" {
-    if (process.env.CHAT_MODE === "mock") return "mock";
-    return this.anthropicKey ? "llm" : "mock";
-  },
   /** Master switch. Live purchasing also requires verified supplier support and limits (see live-readiness). */
   get livePurchasingRequested() {
     return process.env.LIVE_PURCHASING_ENABLED === "true";
@@ -41,12 +30,6 @@ export const env = {
   },
   get alertEmail() {
     return process.env.ALERT_EMAIL || "owner@example.invalid";
-  },
-  get uploadDir() {
-    return process.env.UPLOAD_DIR || "./.data/uploads";
-  },
-  get uploadMaxBytes() {
-    return Number(process.env.UPLOAD_MAX_BYTES || 5 * 1024 * 1024);
   },
   get inlineWorker() {
     return process.env.INLINE_WORKER !== "false";

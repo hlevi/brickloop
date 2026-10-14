@@ -22,7 +22,6 @@ const NUMERIC: { key: keyof OperatingSettings; label: string; cents?: boolean; m
   { key: "digestIntervalHours", label: "Exception digest interval (hours)" },
   { key: "deliveryGraceDays", label: "Delivery delay grace (days)" },
   { key: "authEscalateAfterHours", label: "Escalate uncaptured authorization after (hours)" },
-  { key: "creaturePriceCents", label: "Creature Lab fixed price, incl. delivery and taxes", cents: true, min: 1, hint: "One price for every creature, shown only to grown-ups. Applies to new orders; quotes, limits and the minimum contribution are still checked." },
 ];
 
 export default function SettingsForm({ settings, sim, parts, colors }: { settings: OperatingSettings; sim: SimulatorSettings; parts: { id: string; name: string; bl: string }[]; colors: { id: string; name: string; bl: number }[] }) {

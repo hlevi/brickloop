@@ -77,6 +77,7 @@ export const PARTS: Record<string, PartDef> = Object.fromEntries(
     plate(10, 6, "3033"),
     plate(12, 6, "3028"),
     plate(8, 8, "41539"),
+    plate(16, 16, "91405"),
     // Tiles (smooth tops)
     tile(1, 1, "3070b"),
     tile(2, 1, "3069b"),

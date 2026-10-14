@@ -12,7 +12,7 @@ const BASE_CENTS: Record<string, number> = {
   "brick-2x2": 6, "brick-2x3": 8, "brick-2x4": 9, "brick-2x6": 14,
   "plate-1x1": 3, "plate-1x2": 3, "plate-1x3": 4, "plate-1x4": 4, "plate-1x6": 6, "plate-1x8": 7,
   "plate-2x2": 4, "plate-2x3": 5, "plate-2x4": 6, "plate-2x6": 8, "plate-2x8": 10, "plate-2x10": 12, "plate-2x12": 14,
-  "plate-4x4": 12, "plate-4x6": 14, "plate-4x8": 18, "plate-4x10": 22, "plate-4x12": 26, "plate-6x6": 22, "plate-6x8": 28, "plate-6x10": 34, "plate-6x12": 40, "plate-8x8": 38,
+  "plate-4x4": 12, "plate-4x6": 14, "plate-4x8": 18, "plate-4x10": 22, "plate-4x12": 26, "plate-6x6": 22, "plate-6x8": 28, "plate-6x10": 34, "plate-6x12": 40, "plate-8x8": 38, "plate-16x16": 140,
   "tile-1x1": 4, "tile-1x2": 4, "tile-1x4": 7, "tile-1x6": 10, "tile-2x2": 6,
   "plate-round-1x1": 3, "brick-round-1x1": 5, "brick-round-2x2": 9, "plate-round-2x2": 5,
   "slope-45-2x1": 6, "slope-45-2x2": 8, "slope-45-2x4": 13, "ridge-45-2x2": 10, "ridge-45-2x4": 16,

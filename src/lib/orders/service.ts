@@ -6,8 +6,9 @@ import { env } from "../config";
 import { ensureCustomer } from "../designs";
 import { raiseException, resolveAllForOrder } from "../exceptions/service";
 import { enqueue } from "../jobs/queue";
-import { isLabKit } from "../model/templates";
-import type { DesignModel } from "../model/types";
+import { getCard } from "../cards/catalog";
+import { cardPriceCents } from "../cards/pricing";
+import type { DesignModel, DesignParams } from "../model/types";
 import { getPaymentProvider } from "../payments/simulated";
 import { PaymentDeclinedError } from "../payments/types";
 import { getSettings } from "../settings";
@@ -15,7 +16,7 @@ import { getSupplier } from "../suppliers/registry";
 import type { ShipTo } from "../suppliers/types";
 import { AppError, isUuid, uuid } from "../util";
 import type { ValidationResult } from "../validation/validate";
-import { lockClaimForOrder, markWishOrdered } from "../wishes";
+import { parseCardDetails, type CardOrderDetails } from "./card";
 import { liveReadiness } from "./live";
 import { lockOrder, transition, type OrderStatus } from "./stateMachine";
 
@@ -46,10 +47,13 @@ export interface OrderRow {
   estimated_delivery_at: string | null;
   delivered_at: string | null;
   procurement_attempts: number;
-  /** Lab kits: one fixed price incl. delivery and taxes; the quote's customer total equals it. */
+  /** Cards: one fixed price incl. printing, packing, delivery and taxes; the quote's customer total equals it. */
   fixed_price_cents: number | null;
-  /** Lab kits: the wish this order came from. */
-  wish_code: string | null;
+  /** Cards: what is printed and where it goes (personal data; purged after delivery). */
+  card: CardOrderDetails | null;
+  /** Cards: hold the packed card until this date (YYYY-MM-DD). */
+  ship_on: string | null;
+  personal_data_purged_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -124,9 +128,13 @@ export async function notifyCustomer(q: Queryable, orderId: string, subject: str
 
 /**
  * Start checkout: freeze the current design revision and its parts list, then hand off to the workflow.
- * Lab kits (Creature Lab) are orderable only through a grown-up's wish claim and use one fixed price.
+ * Card designs sell at their tier's fixed price; `expectedPriceCents` (the price the buyer saw) must
+ * still match it, so a price change between page view and checkout is never charged silently.
  */
-export async function createOrder(customerId: string, input: { designId: string; contact: unknown; adultConfirmed: unknown; budgetCents?: unknown }): Promise<string> {
+export async function createOrder(
+  customerId: string,
+  input: { designId: string; contact: unknown; adultConfirmed: unknown; budgetCents?: unknown; card?: unknown; expectedPriceCents?: unknown },
+): Promise<string> {
   if (!isUuid(input.designId)) throw new AppError("not_found", "Design not found", 404);
   if (input.adultConfirmed !== true) throw new AppError("adult_required", "The purchaser must confirm they are 18 or older");
   const contact = parseContact(input.contact);
@@ -141,26 +149,28 @@ export async function createOrder(customerId: string, input: { designId: string;
   const lookup = await loadMappingLookup();
   return db.tx(async (q) => {
     await ensureCustomer(q, customerId);
-    const d = await q.query<{ current_revision_id: string; template: string }>(`SELECT current_revision_id, template FROM designs WHERE id = $1 AND customer_id = $2`, [input.designId, customerId]);
+    const d = await q.query<{ current_revision_id: string }>(`SELECT current_revision_id FROM designs WHERE id = $1 AND customer_id = $2`, [input.designId, customerId]);
     if (!d.rows[0]) throw new AppError("not_found", "Design not found", 404);
-    let revId = d.rows[0].current_revision_id;
-    let wishCode: string | null = null;
-    let fixedPrice: number | null = null;
-    if (isLabKit(d.rows[0].template)) {
-      // Only a grown-up's copy made by claiming a wish can be ordered (a kid's Lab design never
-      // reaches checkout), only once per wish, and always the frozen copy the grown-up reviewed.
-      const claim = await lockClaimForOrder(q, input.designId);
-      revId = claim.revisionId;
-      wishCode = claim.code;
-      fixedPrice = settings.creaturePriceCents;
-    }
-    const rev = await q.query<{ model: DesignModel; validation: ValidationResult }>(`SELECT model, validation FROM design_revisions WHERE id = $1`, [revId]);
+    const revId = d.rows[0].current_revision_id;
+    const rev = await q.query<{ model: DesignModel; validation: ValidationResult; params: DesignParams }>(`SELECT model, validation, params FROM design_revisions WHERE id = $1`, [revId]);
     const model = rev.rows[0].model;
+    const params = rev.rows[0].params;
+    let card: CardOrderDetails | null = null;
+    let fixedPrice: number | null = null;
+    if (params.card) {
+      const def = getCard(params.card.cardId);
+      if (!def) throw new AppError("not_found", "Card not found", 404);
+      card = parseCardDetails(input.card, params, def.title);
+      fixedPrice = cardPriceCents(model, settings);
+      if (input.expectedPriceCents !== undefined && Number(input.expectedPriceCents) !== fixedPrice) {
+        throw new AppError("price_changed", "The price of this card has changed. Please review it before ordering.", 409);
+      }
+    }
     const bom = computeBom(model, lookup);
     const id = uuid();
     await q.query(
-      `INSERT INTO orders(id, customer_id, design_id, design_revision_id, status, mode, supplier, frozen_model, frozen_bom, frozen_validation, contact, adult_confirmed, budget_cents, environmental_label, fixed_price_cents, wish_code)
-       VALUES ($1,$2,$3,$4,'draft',$5,$6,$7,$8,$9,$10,true,$11,$12,$13,$14)`,
+      `INSERT INTO orders(id, customer_id, design_id, design_revision_id, status, mode, supplier, frozen_model, frozen_bom, frozen_validation, contact, adult_confirmed, budget_cents, environmental_label, fixed_price_cents, card, ship_on)
+       VALUES ($1,$2,$3,$4,'draft',$5,$6,$7,$8,$9,$10,true,$11,$12,$13,$14,$15)`,
       [
         id,
         customerId,
@@ -175,12 +185,12 @@ export async function createOrder(customerId: string, input: { designId: string;
         fixedPrice === null ? budget : null, // a fixed price needs no budget
         environmentalLabel(settings.condition),
         fixedPrice,
-        wishCode,
+        card ? JSON.stringify(card) : null,
+        card?.shipOn ?? null,
       ],
     );
-    if (wishCode) await markWishOrdered(q, wishCode, id, input.designId);
     await q.query(`INSERT INTO order_status_history(order_id, from_status, to_status, reason, actor) VALUES ($1,NULL,'draft','checkout started',$2)`, [id, `customer:${customerId}`]);
-    await audit(q, `customer:${customerId}`, "order.create", "order", id, { designRevisionId: revId, mode, ...(fixedPrice !== null ? { fixedPriceCents: fixedPrice } : {}) });
+    await audit(q, `customer:${customerId}`, "order.create", "order", id, { designRevisionId: revId, mode, ...(fixedPrice !== null ? { fixedPriceCents: fixedPrice, cardId: card!.cardId } : {}) });
     await transition(q, id, "validating", "design frozen for validation", "system");
     await enqueue(q, "order.validate", { orderId: id }, { dedupeKey: `validate:${id}:1` });
     return id;

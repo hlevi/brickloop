@@ -12,7 +12,7 @@ import { validateModel } from "@/lib/validation/validate";
 /** Every option combination of every kit. */
 function allConfigs(): DesignParams[] {
   const out: DesignParams[] = [];
-  for (const k of KITS.filter((k) => !k.lab)) {
+  for (const k of KITS) {
     let combos: Record<string, string>[] = [{}];
     for (const o of k.options) combos = combos.flatMap((c) => o.values.map((v) => ({ ...c, [o.id]: v.id })));
     for (const options of combos) out.push({ ...defaultParams(k.id), options });
@@ -21,8 +21,8 @@ function allConfigs(): DesignParams[] {
 }
 
 describe("kits", () => {
-  it("cover every age band from 4+ to 12+", () => {
-    expect(new Set(KITS.map((k) => k.ageBand))).toEqual(new Set(["4+", "6+", "7+", "8+", "9+", "12+"]));
+  it("have unique ids", () => {
+    expect(new Set(KITS.map((k) => k.id)).size).toBe(KITS.length);
   });
 
   it.each(allConfigs().map((c) => [`${c.template} ${JSON.stringify(c.options)}`, c] as const))("%s passes digital validation", (_n, params) => {
@@ -49,7 +49,7 @@ describe("kits", () => {
   });
 
   it("is deterministic", () => {
-    for (const k of KITS.filter((k) => !k.lab)) expect(JSON.stringify(buildModel(defaultParams(k.id)))).toBe(JSON.stringify(buildModel(defaultParams(k.id))));
+    for (const k of KITS) expect(JSON.stringify(buildModel(defaultParams(k.id)))).toBe(JSON.stringify(buildModel(defaultParams(k.id))));
   });
 
   it("supported edits change the model, parts list and structural key consistently", () => {

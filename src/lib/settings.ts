@@ -1,6 +1,7 @@
 import { getDb, type Queryable } from "./db";
 import { audit } from "./audit";
 import { AppError } from "./util";
+import type { PriceTier } from "./cards/pricing";
 
 export interface OperatingSettings {
   purchasingPaused: boolean;
@@ -19,8 +20,8 @@ export interface OperatingSettings {
   deliveryGraceDays: number;
   /** Fraction of the authorization window after which an un-captured auth is escalated. */
   authEscalateAfterHours: number;
-  /** Creature Lab: one fixed price per creature, including delivery and taxes (shown only to grown-ups). */
-  creaturePriceCents: number;
+  /** Fixed card prices per tier (cards/pricing.ts), including printing, packing, delivery and taxes. */
+  cardPrices: Record<PriceTier, number>;
 }
 
 export const DEFAULT_SETTINGS: OperatingSettings = {
@@ -36,7 +37,7 @@ export const DEFAULT_SETTINGS: OperatingSettings = {
   digestIntervalHours: 24,
   deliveryGraceDays: 3,
   authEscalateAfterHours: 120,
-  creaturePriceCents: 2400,
+  cardPrices: { mini: 1900, classic: 2500, grand: 3400, "mosaic-8": 2200, "mosaic-16": 3600 },
 };
 
 export interface SimulatorSettings {
@@ -64,7 +65,8 @@ async function getKey<T>(q: Queryable, key: string, defaults: T): Promise<T> {
 }
 
 export async function getSettings(q?: Queryable): Promise<OperatingSettings> {
-  return getKey(q ?? (await getDb()), "operating", DEFAULT_SETTINGS);
+  const s = await getKey(q ?? (await getDb()), "operating", DEFAULT_SETTINGS);
+  return { ...s, cardPrices: { ...DEFAULT_SETTINGS.cardPrices, ...s.cardPrices } };
 }
 
 export async function getSimulatorSettings(q?: Queryable): Promise<SimulatorSettings> {
@@ -83,7 +85,6 @@ function validateSettings(s: OperatingSettings) {
     "digestIntervalHours",
     "deliveryGraceDays",
     "authEscalateAfterHours",
-    "creaturePriceCents",
   ];
   for (const k of nonNeg) {
     const v = s[k];
@@ -91,8 +92,11 @@ function validateSettings(s: OperatingSettings) {
   }
   if (s.maxProcurementAttempts < 1 || s.maxProcurementAttempts > 10) throw new AppError("invalid_setting", "maxProcurementAttempts must be 1-10");
   if (s.quoteTtlMinutes < 1) throw new AppError("invalid_setting", "quoteTtlMinutes must be at least 1");
-  if (!Number.isInteger(s.creaturePriceCents) || s.creaturePriceCents < 100 || s.creaturePriceCents > 100000) {
-    throw new AppError("invalid_setting", "creaturePriceCents must be a whole number of cents from 100 to 100000");
+  for (const tier of Object.keys(DEFAULT_SETTINGS.cardPrices) as PriceTier[]) {
+    const v = s.cardPrices?.[tier];
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 100 || v > 100000) {
+      throw new AppError("invalid_setting", `cardPrices.${tier} must be a whole number of cents from 100 to 100000`);
+    }
   }
   if (!["N", "U"].includes(s.condition)) throw new AppError("invalid_setting", "condition must be N or U");
   if (typeof s.purchasingPaused !== "boolean") throw new AppError("invalid_setting", "purchasingPaused must be boolean");
@@ -105,6 +109,7 @@ export async function updateSettings(patch: Partial<OperatingSettings>, actor: s
     const allowed = Object.keys(DEFAULT_SETTINGS);
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const next = { ...current, ...clean } as OperatingSettings;
+    if (clean.cardPrices) next.cardPrices = { ...current.cardPrices, ...(clean.cardPrices as Partial<OperatingSettings["cardPrices"]>) };
     validateSettings(next);
     await q.query(
       `INSERT INTO settings(key, value, updated_by, updated_at) VALUES ('operating', $1, $2, now())

@@ -1,81 +1,33 @@
-import { renderIso, toSvg } from "@/lib/instructions/iso";
-import { buildModel, defaultParams, READY_MADE_KITS as KITS } from "@/lib/model/templates";
-import { computeBom } from "@/lib/bom/bom";
-import { estimatePrice } from "@/lib/pricing/estimate";
-import { getSettings } from "@/lib/settings";
-import { formatCents } from "@/lib/format";
-import StartButton from "@/components/StartButton";
-import HomeHero from "@/components/lab/HomeHero";
+import Link from "next/link";
+import { listedCards } from "@/lib/cards/catalog";
+import { OCCASIONS } from "@/lib/cards/occasions";
 
-const BANDS: { band: string; title: string; blurb: string }[] = [
-  { band: "4+", title: "Ages 4+", blurb: "Chunky first builds with big bricks and a few short steps." },
-  { band: "6+", title: "Ages 6+", blurb: "Vehicles that roll, with smooth tiles and sloped details." },
-  { band: "7+", title: "Ages 7+", blurb: "Brick-built creatures with personality." },
-  { band: "8+", title: "Ages 8+", blurb: "Detailed buildings with gardens, doors and real roofs." },
-  { band: "9+", title: "Ages 9+", blurb: "Bigger builds with stages, towers and moving parts." },
-  { band: "12+", title: "Ages 12+ and adults", blurb: "Calm display pieces for a desk or shelf." },
-];
-
-export default async function Gallery() {
-  const settings = await getSettings();
+/** Interim home page (replaced by the shop home in the card-shop build). */
+export default function Home() {
+  const cards = listedCards();
   return (
     <div className="stack">
-      <HomeHero />
-      <section aria-labelledby="ready-made" className="stack" style={{ gap: 6, marginTop: 12 }}>
-        <h2 id="ready-made" style={{ fontSize: "1.5rem", margin: 0 }}>
-          Ready-made kits
-        </h2>
-        <p className="muted home-kits-intro">
-          For grown-ups and older builders: six original BrickLoop kits. Change their colors and options with simple controls or by chatting, and check the exact parts list
-          and step-by-step instructions before you buy. You approve a confirmed quote before anything is charged.
-        </p>
-      </section>
-      {BANDS.map(({ band, title, blurb }) => {
-        const kits = KITS.filter((k) => k.ageBand === band);
-        if (!kits.length) return null;
+      <h1>Greeting cards they build</h1>
+      <p className="muted">Every card comes with the bricks to build a keepsake. Pick a card, personalize it, and we order the parts, print the card and send it.</p>
+      <p>
+        <Link href="/create">Create your own mosaic card</Link>
+      </p>
+      {OCCASIONS.map((o) => {
+        const list = cards.filter((c) => c.occasions.includes(o.id));
+        if (!list.length) return null;
         return (
-          <section key={band} aria-label={title} className="stack" style={{ gap: 8 }}>
-            <div>
-              <h3 style={{ marginBottom: 2, fontSize: "1.2rem" }}>{title}</h3>
-              <p className="small muted" style={{ margin: 0 }}>
-                {blurb}
-              </p>
-            </div>
-            <div className="grid cards">
-              {kits.map((k) => {
-                const model = buildModel(defaultParams(k.id));
-                const svg = toSvg(renderIso(model.parts), { width: 320 });
-                const bom = computeBom(model);
-                const est = estimatePrice(bom, settings);
-                return (
-                  <article key={k.id} className="panel card">
-                    <div className="preview" dangerouslySetInnerHTML={{ __html: svg }} aria-label={`${k.name} preview`} role="img" />
-                    <div className="row" style={{ justifyContent: "space-between" }}>
-                      <h3 style={{ margin: 0, fontSize: "1.1rem" }}>{k.name}</h3>
-                      <span className="badge info">{k.ageBand}</span>
-                    </div>
-                    <p className="small muted" style={{ margin: 0 }}>
-                      {k.description}
-                    </p>
-                    <p className="small" style={{ margin: 0 }}>
-                      <strong>{bom.totalPieces} pieces</strong> &middot; {model.steps.length} steps &middot; about {formatCents(est.totalCents)} delivered{" "}
-                      <span className="muted">(estimate, not a quote)</span>
-                    </p>
-                    <p className="small muted" style={{ margin: 0 }}>
-                      Customize: {k.options.map((o) => o.label.toLowerCase()).concat(["colors"]).join(", ")}
-                    </p>
-                    <StartButton template={k.id} />
-                  </article>
-                );
-              })}
-            </div>
+          <section key={o.id}>
+            <h2>{o.label}</h2>
+            <ul>
+              {list.map((c) => (
+                <li key={c.id}>
+                  <Link href={`/cards/${c.id}`}>{c.title}</Link> <span className="muted small">{c.tagline}</span>
+                </li>
+              ))}
+            </ul>
           </section>
         );
       })}
-      <section className="panel small muted">
-        Ready-made kit prices include parts, picking, packaging, shipping, taxes and our service fee. Shipping is a fixed cost per order, so bigger kits are better value per
-        piece. Building from a photo isn&apos;t available yet; you can attach a photo to a ready-made kit design as inspiration for our team.
-      </section>
     </div>
   );
 }
